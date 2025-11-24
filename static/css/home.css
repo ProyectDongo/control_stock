@@ -1,0 +1,572 @@
+:root {
+  --primary-color: #2c3e50;
+  --secondary-color: #3498db;
+  --accent-color: #2980b9;
+  --success-color: #27ae60;
+  --danger-color: #e74c3c;
+  --warning-color: #f39c12;
+  --light-bg: #f8f9fa;
+  --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  --border-radius: 10px;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f7fa;
+  color: #333;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+}
+
+/* Layout principal */
+.main-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-row {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  margin: 0;
+}
+
+@media (max-width: 992px) {
+  .content-row {
+    flex-direction: column;
+  }
+}
+
+/* Sidebar mejorado */
+.sidebar {
+  background: linear-gradient(180deg, var(--primary-color) 0%, #1a2530 100%);
+  color: white;
+  min-height: 100%;
+  box-shadow: 3px 0 10px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1rem;
+  position: relative;
+  z-index: 100;
+  width: 280px;
+}
+
+@media (max-width: 992px) {
+  .sidebar {
+    width: 100%;
+    min-height: auto;
+    margin-bottom: 1rem;
+  }
+}
+
+.sidebar-brand {
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  margin-bottom: 1.5rem;
+}
+
+.sidebar-btn {
+  text-align: left;
+  padding: 12px 15px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: all 0.3s;
+  border: none;
+  color: #ecf0f1;
+  background-color: rgba(255,255,255,0.05);
+  width: 100%;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-btn:hover {
+  background-color: rgba(255,255,255,0.15);
+  transform: translateX(5px);
+}
+
+.sidebar-btn.active {
+  background-color: var(--secondary-color);
+  color: white;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+.sidebar-btn i {
+  width: 22px;
+  margin-right: 12px;
+  font-size: 1.1rem;
+}
+
+/* Contenido principal */
+.main-content {
+  padding: 2rem;
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
+@media (max-width: 992px) {
+  .main-content {
+    width: 100%;
+    padding: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    padding: 1rem;
+  }
+}
+
+/* Tarjetas mejoradas */
+.card {
+  border-radius: var(--border-radius);
+  border: none;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.3s, box-shadow 0.3s;
+  overflow: hidden;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+}
+
+.stat-card {
+  text-align: center;
+  padding: 2rem 1rem;
+  transition: all 0.3s;
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+}
+
+.stat-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  opacity: 0.9;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin: 0.75rem 0;
+}
+
+.stat-label {
+  color: #6c757d;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .stat-value {
+    font-size: 1.5rem;
+  }
+}
+
+/* Contenedores de formularios compactos */
+.form-container {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  padding: 2rem;
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .form-container {
+    padding: 1.25rem;
+  }
+}
+
+.form-section-title {
+  color: var(--primary-color);
+  border-bottom: 2px solid var(--secondary-color);
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.75rem;
+  font-weight: 600;
+  font-size: 1.5rem;
+}
+
+.compact-form .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.compact-form label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #495057;
+  font-size: 0.95rem;
+}
+
+.compact-form .form-control, 
+.compact-form .form-select {
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  border: 1px solid #dee2e6;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.compact-form .form-control:focus, 
+.compact-form .form-select:focus {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+/* Tablas mejoradas */
+.table-container {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  padding: 1.75rem;
+  margin-top: 2rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .table-container {
+    padding: 1.25rem;
+  }
+}
+
+.table thead th {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 14px 16px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.table tbody td {
+  padding: 12px 16px;
+  vertical-align: middle;
+}
+
+.table tbody tr {
+  transition: background-color 0.2s;
+}
+
+.table tbody tr:hover {
+  background-color: rgba(52, 152, 219, 0.05);
+}
+
+.badge-ingreso {
+  background-color: var(--success-color);
+  color: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+}
+
+.badge-egreso {
+  background-color: var(--danger-color);
+  color: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+}
+
+/* Botones mejorados */
+.btn-action {
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+}
+
+.btn-primary {
+  background-color: var(--secondary-color);
+  border-color: var(--secondary-color);
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Footer */
+.corporate-footer {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 1.5rem 0;
+  font-size: 0.9rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+  .sidebar {
+    margin-left: 0;
+  }
+  
+  .main-content {
+    padding: 1.5rem;
+  }
+  
+  .form-container {
+    padding: 1.5rem;
+  }
+  
+  .stat-value {
+    font-size: 1.75rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    padding: 1rem;
+  }
+  
+  .form-container {
+    padding: 1.25rem;
+  }
+  
+  .stat-value {
+    font-size: 1.5rem;
+  }
+  
+  .row {
+    flex-direction: column;
+  }
+  
+  .col-md-4 {
+    width: 100%;
+  }
+}
+
+/* Filtros en línea */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 1.5rem;
+}
+
+.filter-item {
+  flex: 1;
+  min-width: 180px;
+}
+
+/* Badges */
+.badge-vigencia {
+  background-color: var(--warning-color);
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 20px;
+}
+
+/* Centros de costo */
+.centros-list {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.centros-list li {
+  background: #f8f9fa;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border-left: 4px solid var(--secondary-color);
+  transition: all 0.2s;
+}
+
+.centros-list li:hover {
+  background: #e9ecef;
+  transform: translateX(5px);
+}
+
+/* Guía de Colores (Legend) */
+.color-box {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  margin-right: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.legend-text {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+/* 1. Monto Alto BASE (Fondo Rojo) */
+.table-high-monto,
+.table-high-monto > td {
+  background-color: rgba(231, 76, 60, 0.25) !important; /* Fondo Rojo */
+}
+
+/* 2. Ajuste BASE (Fondo Amarillo, Borde Amarillo) */
+.table-ajuste,
+.table-ajuste > td {
+  background-color: rgba(243, 156, 18, 0.08) !important; /* Fondo Amarillo */
+} 
+.table-ajuste {
+  border-left:8px solid var(--warning-color);
+  border-right: 8px solid var(--warning-color); /* Borde Amarillo */
+}
+
+/* 3. REGLA COMBINADA: Ajuste + Monto Alto */
+/* Gana por mayor especificidad. Setear ambos a los valores deseados:
+   Fondo: Amarillo (Ajuste)
+   Borde: Rojo (Monto Alto) */
+.table-ajuste.table-high-monto,
+.table-ajuste.table-high-monto > td {
+  background-color: rgba(241, 124, 7, 0.233) !important; /* Fondo naranja */
+}
+.table-ajuste.table-high-monto {
+  border-left:8px solid var(--danger-color) !important;
+  border-right: 8px solid var(--danger-color) !important; /* Borde Rojo (utilizando la variable de peligro) */
+}
+
+/* Mejoras específicas para paneles */
+.panel {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Indicadores visuales */
+.monto-inicial {
+  color: var(--primary-color);
+}
+
+.balance-actual {
+  color: var(--success-color);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6c757d;
+}
+
+.empty-state i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+/* Dashboard Layout con barra lateral derecha */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  gap: 2rem;
+  align-items: start;
+}
+
+.dashboard-main {
+  min-width: 0;
+}
+
+.dashboard-sidebar-right {
+  height: 100%;
+}
+
+@media (max-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-sidebar-right {
+    order: -1;
+  }
+}
+
+/* Tarjetas resumen lateral */
+.sidebar-title {
+  background: var(--primary-color);
+  color: white;
+  padding: 1rem;
+  border-radius: 10px 10px 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 0;
+}
+
+.summary-card {
+  background: white;
+  border-radius: 0 0 10px 10px;
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+  border: 1px solid #e0e0e0;
+}
+
+.summary-card h6 {
+  background: #f8f9fa;
+  padding: 0.75rem 1rem;
+  margin: 0;
+  font-size: 0.95rem;
+  border-bottom: 1px solid #eee;
+}
+
+.summary-list {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid #f1f1f1;
+  font-size: 0.92rem;
+  transition: background 0.2s;
+}
+
+.summary-item:hover {
+  background-color: #f8f9fa;
+}
+
+.summary-item:last-child {
+  border-bottom: none;
+}
+
+.product-name {
+  font-weight: 500;
+  color: #2c3e50;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-item .badge {
+  font-size: 0.9rem;
+  padding: 0.4em 0.8em;
+}
+
+/* Scrollbar bonita */
+.summary-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.summary-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.summary-list::-webkit-scrollbar-thumb {
+  background: #bdc3c7;
+  border-radius: 10px;
+}
+
+.summary-list::-webkit-scrollbar-thumb:hover {
+  background: #a0a6ab;
+}
