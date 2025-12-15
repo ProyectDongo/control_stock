@@ -7,8 +7,9 @@ from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
 from django.urls import reverse  
 from django.utils import timezone
-from .forms import UserRegistrationForm, ProductoForm, StockEntryForm, ProveedorForm, PedidoReposicionForm
+from .forms import UserRegistrationForm, ProductoForm, StockEntryForm, ProveedorForm, PedidoReposicionForm, StockExitForm
 from .models import Producto, Inventario, Proveedor, PedidoReposicion, Reporte, User, Transaction
+from django.db import transaction  
 
 @login_required
 def dashboard(request):
@@ -79,7 +80,7 @@ def dashboard(request):
     )
     pedidos_vencidos = [(ped, (hoy - ped.fecha_vencimiento).days) for ped in pedidos_vencidos_qs]
 
-    # Datos para gráficos (últimos 7 días, por ejemplo)
+    # Datos para gráficos 
     from datetime import timedelta
     fecha_inicio = timezone.now().date() - timedelta(days=7)
     transacciones = Transaction.objects.filter(fecha__gte=fecha_inicio).order_by('fecha')
@@ -111,21 +112,23 @@ def dashboard(request):
         'ganancias': [float(inv.ganancia_estimada or 0) for inv in inventarios]
     }
 
-    # Listas (filtradas si es necesario, pero por ahora todas)
+    # Listas 
     proveedores = Proveedor.objects.all()
     productos = Producto.objects.all()
     pedidos = PedidoReposicion.objects.all()
     reportes = Reporte.objects.all()
     usuarios = User.objects.all()
     
-    # Forms (con instances si edit)
+    # Forms 
     stock_entry_form = StockEntryForm(request.POST if request.POST.get('form_type') in ['ingreso', 'egreso'] else None)
+    stock_exit_form = StockExitForm(request.POST if request.POST.get('form_type') in ['ingreso', 'egreso'] else None)
     proveedor_form = ProveedorForm(request.POST if request.POST.get('form_type') == 'proveedor' else None)
     producto_form = ProductoForm(request.POST if request.POST.get('form_type') == 'producto' else None)
     pedido_form = PedidoReposicionForm(request.POST if request.POST.get('form_type') == 'pedido' else None)
     user_form = UserRegistrationForm(request.POST if request.POST.get('form_type') == 'usuario' else None)
+
+    redirect_url = None 
     
-    # Handle edit (set instance)
     edit_pk = None
     if request.method == 'GET':
         if 'edit_producto' in request.GET and role in ['bodeguero', 'admin']:
@@ -143,31 +146,57 @@ def dashboard(request):
     
     if request.method == 'POST':
         form_type = request.POST.get('form_type')
-        redirect_panel = active_panel
         
+
         if form_type in ['ingreso', 'egreso']:
             if stock_entry_form.is_valid():
                 producto = stock_entry_form.cleaned_data['producto']
                 cantidad = stock_entry_form.cleaned_data['cantidad']
-                inv, _ = Inventario.objects.get_or_create(producto=producto, defaults={'stock_minimo': 10})
-                if form_type == 'ingreso':
-                    inv.cantidad += cantidad
-                else:
-                    inv.cantidad -= cantidad
-                    if inv.cantidad < 0:
-                        inv.cantidad = 0
-                inv.save()
-                # Registrar transacción
-                Transaction.objects.create(
-                    inventario=inv,
-                    tipo=form_type,
-                    cantidad=cantidad
-                )
-                messages.success(request, f'{form_type.capitalize()} registrado exitosamente.')
-                redirect_panel = 'dashboard'
+
+                with transaction.atomic(): 
+                    inv, _ = Inventario.objects.get_or_create(
+                        producto=producto,
+                        defaults={'stock_minimo': 10}
+                    )
+                    operacion_exitosa = False
+
+                    if form_type == 'ingreso':
+                        if cantidad <= 0:
+                            messages.error(request, 'Cantidad debe ser positiva para ingreso.')
+                        else:
+                            inv.cantidad += cantidad
+                            inv.save()
+                            operacion_exitosa = True
+                            messages.success(request, 'Ingreso registrado.')
+                            return redirect(reverse('dashboard') + '?panel=ingreso')
+
+                    elif form_type == 'egreso':
+                        if cantidad <= 0:
+                            messages.error(request, 'Cantidad debe ser positiva para egreso.')
+                        elif cantidad > inv.cantidad:
+                            messages.error(request, f'No hay suficiente stock de "{producto.nombre}". Stock actual: {inv.cantidad}. Solicitado: {cantidad}.')
+                        else:
+                            inv.cantidad -= cantidad
+                            inv.save()
+                            operacion_exitosa = True
+                            messages.success(request, 'Egreso registrado.')
+                            return redirect(reverse('dashboard') + '?panel=ingreso')
+
+                    if operacion_exitosa:
+                        Transaction.objects.create(
+                            inventario=inv,
+                            tipo=form_type,
+                            cantidad=cantidad
+                        )
+                        redirect_panel = 'dashboard'
+                    else:
+                        
+                        active_panel = 'ingreso' if form_type == 'ingreso' else 'egreso'
+
             else:
                 messages.error(request, 'Error en el formulario de stock.')
-        
+                active_panel = 'ingreso' if form_type == 'ingreso' else 'egreso'
+                
         elif form_type == 'producto' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             instance = get_object_or_404(Producto, pk=pk) if pk else None
@@ -175,15 +204,16 @@ def dashboard(request):
             if producto_form.is_valid():
                 producto_form.save()
                 messages.success(request, 'Producto guardado exitosamente.')
+                return redirect(reverse('dashboard') + '?panel=concepto-ingreso')
             else:
                 messages.error(request, 'Error en el formulario de producto.')
-            redirect_panel = 'concepto-ingreso'
-        
+                active_panel = 'concepto-ingreso'  # Quedarse para mostrar errores
+           
         elif form_type == 'delete_producto' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             get_object_or_404(Producto, pk=pk).delete()
             messages.success(request, 'Producto eliminado.')
-            redirect_panel = 'concepto-ingreso'
+           
         
         elif form_type == 'proveedor' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
@@ -194,13 +224,13 @@ def dashboard(request):
                 messages.success(request, 'Proveedor guardado exitosamente.')
             else:
                 messages.error(request, 'Error en el formulario de proveedor.')
-            redirect_panel = 'centro'
+                return redirect(reverse('dashboard') + '?panel=centro')
         
         elif form_type == 'delete_proveedor' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             get_object_or_404(Proveedor, pk=pk).delete()
             messages.success(request, 'Proveedor eliminado.')
-            redirect_panel = 'centro'
+            return redirect(reverse('dashboard') + '?panel=centro')
         
         elif form_type == 'pedido' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
@@ -209,15 +239,18 @@ def dashboard(request):
             if pedido_form.is_valid():
                 pedido_form.save()
                 messages.success(request, 'Pedido guardado exitosamente.')
+                return redirect(reverse('dashboard') + '?panel=concepto-egreso')
             else:
                 messages.error(request, 'Error en el formulario de pedido.')
-            redirect_panel = 'concepto-egreso'
+                active_panel = 'concepto-ingreso'  
+            
         
         elif form_type == 'delete_pedido' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             get_object_or_404(PedidoReposicion, pk=pk).delete()
             messages.success(request, 'Pedido eliminado.')
-            redirect_panel = 'concepto-egreso'
+            return redirect(reverse('dashboard') + '?panel=concepto-egreso')
+            
         
         elif form_type == 'reporte' and role in ['bodeguero', 'admin']:
             tipo = request.POST.get('tipo')
@@ -243,25 +276,29 @@ def dashboard(request):
                 messages.success(request, f'Reporte de {tipo} generado.')
             else:
                 messages.error(request, 'Tipo de reporte inválido o no hay datos.')
+                redirect_panel = 'reporte'  
+                
             redirect_panel = 'rcv'
         
         elif form_type == 'usuario' and role == 'admin':
             if user_form.is_valid():
                 user_form.save()
                 messages.success(request, 'Usuario registrado.')
+                return redirect(reverse('dashboard') + '?panel=parametros-sii')
             else:
                 messages.error(request, 'Error en el formulario de usuario.')
-            redirect_panel = 'parametros-sii'
+                active_panel = 'parametros-sii'
+                  
+            
         
         else:
             messages.error(request, 'Acción no permitida para tu rol.')
             redirect_panel = 'dashboard'
         
-        # Use reverse for the view name and append query param
-        return redirect(reverse('dashboard') + f'?panel={redirect_panel}')
         
     context = {
         'empresa': empresa,
+        'stock_exit_form': stock_exit_form,
         'vigencia_plan': vigencia_plan,
         'total_productos': total_productos,
         'stock_bajo': stock_bajo,
@@ -282,7 +319,7 @@ def dashboard(request):
         'pedido_form': pedido_form,
         'user_form': user_form,
         'active_panel': active_panel,
-        'role': role,  # Para usar en template si es necesario
+        'role': role,  
         'ganancia_real': int(ganancia_real or 0),
         'ganancia_estimada_total': int(ganancia_estimada_total or 0),
         'ultimos_movimientos': ultimos_movimientos,
@@ -306,3 +343,4 @@ def user_logout(request):
     logout(request)
     messages.success(request, 'Sesión cerrada.')
     return redirect('login')
+    

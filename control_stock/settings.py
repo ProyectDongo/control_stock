@@ -25,8 +25,12 @@ SECRET_KEY = 'django-insecure-w-r-f!9w8unqus^_*kre=rne-v#cpir9!cbyp43)c0@tdih2w)
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = ["*"]
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.ngrok-free.app",         
+    "http://localhost:8000",       
+    "http://127.0.0.1:8000",
+]
 
 # Application definition
 
@@ -91,7 +95,7 @@ LOGOUT_REDIRECT_URL = 'login'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'control_stock',
+        'NAME': 'control_stock1',
         'USER': 'root',
         'PASSWORD': '',
         'HOST': 'localhost',

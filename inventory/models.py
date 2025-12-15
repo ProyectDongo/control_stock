@@ -1,10 +1,12 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, RegexValidator
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.core.mail import send_mail
+from django.forms import ValidationError
 from django.utils import timezone
+from django.db import transaction
 
 class User(AbstractUser):
     ROLE_CHOICES = (
@@ -13,26 +15,39 @@ class User(AbstractUser):
         ('trabajador', 'Trabajador'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='trabajador')
-    rut = models.CharField(max_length=12, unique=True, null=True, blank=True)
+    rut = models.CharField(
+        max_length=12, unique=True, null=True, blank=True,
+        validators=[RegexValidator(r'^\d{1,8}-[\dkK]$', 'Formato de RUT inválido.')]
+    )
 
     class Meta:
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'
 
 class Producto(models.Model):
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField()
-    unidad = models.CharField(max_length=50)  # e.g., kg, unidad
-    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], verbose_name="Precio Costo")
-    precio_venta = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], default=0, verbose_name="Precio Venta")
+    unidad = models.CharField(max_length=50)
+    precio_unitario = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)],
+        verbose_name="Precio Costo"
+    )
+    precio_venta = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)],
+        default=0, verbose_name="Precio Venta"
+    )
 
     def __str__(self):
         return self.nombre
 
+    def clean(self):
+        if self.precio_venta < self.precio_unitario:
+            raise ValidationError("Precio venta no puede ser menor que costo.")
+
 class Inventario(models.Model):
-    producto = models.ForeignKey(Producto, on_delete=models.CASCADE)
+    producto = models.OneToOneField(Producto, on_delete=models.CASCADE)
     cantidad = models.PositiveIntegerField(default=0)
-    stock_minimo = models.PositiveIntegerField(default=10)
+    stock_minimo = models.PositiveIntegerField(default=10, validators=[MinValueValidator(1)])
     fecha_actualizacion = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -59,28 +74,38 @@ class Transaction(models.Model):
     )
     inventario = models.ForeignKey(Inventario, on_delete=models.CASCADE)
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
-    cantidad = models.PositiveIntegerField()
+    cantidad = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     fecha = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.tipo} de {self.cantidad} para {self.inventario.producto.nombre}"
 
 class Proveedor(models.Model):
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=100, unique=True)
     contacto = models.CharField(max_length=100)
-    email = models.EmailField()
-    telefono = models.CharField(max_length=20)
+    email = models.EmailField(unique=True)
+    telefono = models.CharField(
+        max_length=20,
+        validators=[RegexValidator(r'^\+?\d{1,3}?[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}$', 'Formato inválido.')]
+    )
 
     def __str__(self):
         return self.nombre
 
 class PedidoReposicion(models.Model):
+    PEDIDOS_CHOISE = (
+        ('Pendiente'),
+        ('Completado'),
+        ('Entransito'),
+        ('Cancelado'),
+    )
+     
     proveedor = models.ForeignKey(Proveedor, on_delete=models.CASCADE)
     producto = models.ForeignKey(Producto, on_delete=models.CASCADE)
-    cantidad = models.PositiveIntegerField()
+    cantidad = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     fecha_pedido = models.DateTimeField(auto_now_add=True)
     fecha_vencimiento = models.DateField(null=True, blank=True)
-    estado = models.CharField(max_length=50, default='Pendiente')  # Pendiente, Completado, etc.
+    estado = models.CharField(max_length=50, default='Pendiente', choices=[(tag, tag) for tag in PEDIDOS_CHOISE])
 
     def __str__(self):
         return f"Pedido {self.id} - {self.producto.nombre}"
@@ -89,6 +114,10 @@ class PedidoReposicion(models.Model):
         if self.fecha_vencimiento and self.estado == 'Pendiente':
             return timezone.now().date() > self.fecha_vencimiento
         return False
+
+    def clean(self):
+        if self.fecha_vencimiento and self.fecha_vencimiento < timezone.now().date():
+            raise ValidationError("Fecha vencimiento no puede ser pasada.")
 
 @receiver(post_save, sender=PedidoReposicion)
 def notify_new_pedido(sender, instance, created, **kwargs):
@@ -102,9 +131,9 @@ def notify_new_pedido(sender, instance, created, **kwargs):
         )
 
 class Reporte(models.Model):
-    tipo = models.CharField(max_length=100)  # e.g., Inventario, Proveedores
+    tipo = models.CharField(max_length=100)
     fecha = models.DateTimeField(auto_now_add=True)
-    contenido = models.TextField()  # JSON or text summary
+    contenido = models.TextField()
 
     def __str__(self):
         return f"{self.tipo} - {self.fecha}"
