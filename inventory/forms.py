@@ -3,10 +3,11 @@ from django.contrib.auth.forms import UserCreationForm
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit
 from django.utils import timezone
-from .models import User, Producto, Inventario, Proveedor, PedidoReposicion
+from .models import User, Producto, Inventario, Proveedor, Pedido, PedidoItem
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
+from django.forms import inlineformset_factory
 
 class UserRegistrationForm(UserCreationForm):
     role = forms.ChoiceField(choices=User.ROLE_CHOICES, label="Rol de usuario")
@@ -143,8 +144,9 @@ class StockExitForm(forms.Form):
             cleaned_data['cantidad'] = abs(cantidad)  
             try:
                 inventario = Inventario.objects.get(producto=producto)
-                if cantidad > inventario.cantidad:
-                    raise ValidationError(f"No hay suficiente stock. Disponible: {inventario.cantidad}, solicitaste {cantidad}.")
+                disponible = inventario.cantidad - inventario.stock_reservado
+                if cantidad > disponible:
+                    raise ValidationError(f"No hay suficiente stock disponible. Disponible: {disponible}, solicitaste {cantidad}.")
                 if cantidad <= 0:
                     raise ValidationError("La cantidad debe ser positiva.")
             except Inventario.DoesNotExist:
@@ -179,10 +181,10 @@ class ProveedorForm(forms.ModelForm):
             self.add_error('email', "El email es requerido.")
         return cleaned_data
 
-class PedidoReposicionForm(forms.ModelForm):
+class PedidoForm(forms.ModelForm):
     class Meta:
-        model = PedidoReposicion
-        fields = ['proveedor', 'producto', 'cantidad', 'estado', 'fecha_vencimiento']
+        model = Pedido
+        fields = ['proveedor', 'estado', 'fecha_vencimiento']
         widgets = {
             'fecha_vencimiento': forms.DateInput(attrs={'type': 'date'}),
             'estado': forms.Select(),
@@ -192,20 +194,19 @@ class PedidoReposicionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.helper = FormHelper()
         self.helper.form_method = 'post'
-        self.helper.add_input(Submit('submit', 'Crear Pedido', css_class='btn-warning'))
-        self.fields['producto'].empty_label = None  
-        self.fields['producto'].queryset = Producto.objects.all().order_by('nombre') 
+        self.helper.form_tag = False
 
-    def clean_cantidad(self):
-        cantidad = self.cleaned_data.get('cantidad')
-        if cantidad < 0:
-            cantidad = abs(cantidad)  # Convertir negativo a positivo
-        if cantidad <= 0:
-            raise ValidationError("La cantidad debe ser mayor que 0.")
-        return cantidad
-
-    def clean_fecha_vencimiento(self):
-        fecha = self.cleaned_data.get('fecha_vencimiento')
+    def clean(self):
+        cleaned_data = super().clean()
+        fecha = cleaned_data.get('fecha_vencimiento')
         if fecha and fecha < timezone.now().date():
             raise ValidationError("La fecha de vencimiento no puede ser pasada.")
-        return fecha
+        return cleaned_data
+
+PedidoItemFormSet = inlineformset_factory(
+    Pedido, PedidoItem, fields=('producto', 'cantidad'), extra=1, can_delete=True,
+    widgets={
+        'producto': forms.Select(attrs={'class': 'form-control'}),
+        'cantidad': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+    }
+)

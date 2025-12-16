@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Producto, Inventario, Proveedor, PedidoReposicion, Reporte,Transaction
+from .models import User, Producto, Inventario, Proveedor,  Reporte,Transaction,Empresa,Pedido,PedidoItem
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 
@@ -38,7 +38,9 @@ class UserAdmin(BaseUserAdmin):
 admin.site.register(User, UserAdmin)
 admin.site.register(Inventario)
 admin.site.register(Proveedor)
-admin.site.register(PedidoReposicion)
+admin.site.register(Pedido)
+admin.site.register(PedidoItem)
 admin.site.register(Reporte)
 admin.site.register(Producto)
 admin.site.register(Transaction)
+admin.site.register(Empresa)

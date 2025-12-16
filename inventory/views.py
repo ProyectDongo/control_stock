@@ -1,4 +1,5 @@
 
+from django.forms import ValidationError
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
@@ -7,40 +8,47 @@ from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
 from django.urls import reverse  
 from django.utils import timezone
-from .forms import UserRegistrationForm, ProductoForm, StockEntryForm, ProveedorForm, PedidoReposicionForm, StockExitForm
-from .models import Producto, Inventario, Proveedor, PedidoReposicion, Reporte, User, Transaction
+from .forms import UserRegistrationForm, ProductoForm, StockEntryForm, ProveedorForm, PedidoForm, PedidoItemFormSet, StockExitForm
+from .models import Producto, Inventario, Proveedor, Pedido, PedidoItem, Reporte, User, Transaction, Empresa
 from django.db import transaction  
+import qrcode
+from io import BytesIO
+import base64
+from datetime import datetime, timedelta  
+from django.utils import timezone
 
 @login_required
 def dashboard(request):
     # Definir permisos por rol
     allowed_panels = {
-        'trabajador': ['dashboard', 'ingreso', 'egreso'],
-        'bodeguero': ['dashboard', 'ingreso', 'egreso', 'centro', 'concepto-ingreso', 'concepto-egreso', 'rcv'],
-        'admin': ['dashboard', 'ingreso', 'egreso', 'centro', 'concepto-ingreso', 'concepto-egreso', 'rcv', 'parametros-sii'],
+        'trabajador': ['dashboard', 'ingreso', 'egreso', 'lista-pedidos'],
+        'bodeguero': ['dashboard', 'ingreso', 'egreso', 'centro', 'concepto-ingreso', 'concepto-egreso', 'rcv', 'lista-pedidos'],
+        'admin': ['dashboard', 'ingreso', 'egreso', 'centro', 'concepto-ingreso', 'concepto-egreso', 'rcv', 'parametros-sii', 'lista-pedidos'],
     }
     role = request.user.role
     active_panel = request.GET.get('panel', 'dashboard')
     if active_panel not in allowed_panels.get(role, []):
         messages.warning(request, 'No tienes acceso a esta sección.')
         active_panel = 'dashboard'
-
-    empresa = {
-        'nombre': 'Empresa de Productos Marinos Bentónicos',
-        'rut': '76.123.456-7',
-        'direccion': 'Calle Ficticia 123, Valdivia, Chile',
-        'telefono': '+56 9 1234 5678'
-    }
+  
     vigencia_plan = {'codigo_plan': 'Prototipo Educativo'}
+    
+    # Obtener datos de la empresa (una sola empresa para el software)
+    empresa = Empresa.objects.first()
     
     # Cálculos para dashboard
     total_productos = Producto.objects.count()
-    stock_bajo = Inventario.objects.filter(cantidad__lt=F('stock_minimo')).count()
+    inventarios = Inventario.objects.annotate(
+        disponible=F('cantidad') - F('stock_reservado')
+    )
+    stock_bajo = inventarios.filter(disponible__lt=F('stock_minimo')).count()
     total_inventario = Inventario.objects.aggregate(total=Sum('cantidad'))['total'] or 0
+    total_reservado = Inventario.objects.aggregate(total=Sum('stock_reservado'))['total'] or 0
+    total_disponible = total_inventario - total_reservado
     total_valor = Inventario.objects.annotate(val=F('cantidad') * F('producto__precio_unitario')).aggregate(sum_val=Sum('val'))['sum_val'] or 0
     
     # Inventarios con valor y ganancia estimada (asumiendo margen del 20%)
-    inventarios = Inventario.objects.annotate(
+    inventarios = inventarios.annotate(
         val=F('cantidad') * F('producto__precio_unitario'),
         ganancia_estimada=F('cantidad') * (F('producto__precio_venta') - F('producto__precio_unitario'))
     )
@@ -71,18 +79,22 @@ def dashboard(request):
     for t in ultimos_movimientos:
         t.costo_total = t.cantidad * t.inventario.producto.precio_unitario
         t.venta_total = t.cantidad * t.inventario.producto.precio_venta
+        if t.tipo == 'ingreso':
+            t.valor_display = t.costo_total
+        else:
+            t.valor_display = -(t.venta_total - t.costo_total)
 
     # Pedidos vencidos
     hoy = timezone.now().date()
-    pedidos_vencidos_qs = PedidoReposicion.objects.filter(
+    pedidos_vencidos_qs = Pedido.objects.filter(
         fecha_vencimiento__lt=hoy,
         estado='Pendiente'
     )
     pedidos_vencidos = [(ped, (hoy - ped.fecha_vencimiento).days) for ped in pedidos_vencidos_qs]
 
     # Datos para gráficos 
-    from datetime import timedelta
-    fecha_inicio = timezone.now().date() - timedelta(days=7)
+    fecha_inicio = timezone.now() - timedelta(days=7)
+    fecha_inicio = fecha_inicio.replace(hour=0, minute=0, second=0, microsecond=0)
     transacciones = Transaction.objects.filter(fecha__gte=fecha_inicio).order_by('fecha')
     from django.db.models.functions import TruncDate
     ingresos_por_dia = transacciones.filter(tipo='ingreso').annotate(dia=TruncDate('fecha')).values('dia').annotate(total=Sum('cantidad'))
@@ -92,11 +104,11 @@ def dashboard(request):
     ingresos = [0] * 8
     egresos = [0] * 8
     for ing in ingresos_por_dia:
-        index = (ing['dia'] - fecha_inicio).days
+        index = (ing['dia'] - fecha_inicio.date()).days
         if 0 <= index < 8:
             ingresos[index] = ing['total']
     for egr in egresos_por_dia:
-        index = (egr['dia'] - fecha_inicio).days
+        index = (egr['dia'] - fecha_inicio.date()).days
         if 0 <= index < 8:
             egresos[index] = egr['total']
 
@@ -115,17 +127,43 @@ def dashboard(request):
     # Listas 
     proveedores = Proveedor.objects.all()
     productos = Producto.objects.all()
-    pedidos = PedidoReposicion.objects.all()
+    pedidos = Pedido.objects.all().order_by('-fecha_pedido')  # Para lista de pedidos
     reportes = Reporte.objects.all()
     usuarios = User.objects.all()
     
     # Forms 
-    stock_entry_form = StockEntryForm(request.POST if request.POST.get('form_type') in ['ingreso', 'egreso'] else None)
-    stock_exit_form = StockExitForm(request.POST if request.POST.get('form_type') in ['ingreso', 'egreso'] else None)
+    stock_entry_form = StockEntryForm(
+        request.POST if request.POST.get('form_type') == 'ingreso' else None, 
+        prefix='ingreso'
+    )
+    stock_exit_form = StockExitForm(
+        request.POST if request.POST.get('form_type') == 'egreso' else None, 
+        prefix='egreso'
+    )
     proveedor_form = ProveedorForm(request.POST if request.POST.get('form_type') == 'proveedor' else None)
     producto_form = ProductoForm(request.POST if request.POST.get('form_type') == 'producto' else None)
-    pedido_form = PedidoReposicionForm(request.POST if request.POST.get('form_type') == 'pedido' else None)
+    pedido_form = PedidoForm(request.POST if request.POST.get('form_type') == 'pedido' else None)
+    pedido_item_formset = PedidoItemFormSet(request.POST if request.POST.get('form_type') == 'pedido' else None)
     user_form = UserRegistrationForm(request.POST if request.POST.get('form_type') == 'usuario' else None)
+
+    # Filtros para lista de pedidos
+    if active_panel == 'lista-pedidos':
+        estado_filtro = request.GET.get('estado')
+        proveedor_filtro = request.GET.get('proveedor')
+        fecha_desde = request.GET.get('fecha_desde')
+        fecha_hasta = request.GET.get('fecha_hasta')
+        if estado_filtro:
+            pedidos = pedidos.filter(estado=estado_filtro)
+        if proveedor_filtro:
+            pedidos = pedidos.filter(proveedor__id=proveedor_filtro)
+        if fecha_desde:
+            fecha_desde_dt = datetime.strptime(fecha_desde, '%Y-%m-%d')
+            fecha_desde_dt = timezone.make_aware(fecha_desde_dt)
+            pedidos = pedidos.filter(fecha_pedido__gte=fecha_desde_dt)
+        if fecha_hasta:
+            fecha_hasta_dt = datetime.strptime(fecha_hasta, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            fecha_hasta_dt = timezone.make_aware(fecha_hasta_dt)
+            pedidos = pedidos.filter(fecha_pedido__lte=fecha_hasta_dt)
 
     redirect_url = None 
     
@@ -141,7 +179,9 @@ def dashboard(request):
             active_panel = 'centro'
         elif 'edit_pedido' in request.GET and role in ['bodeguero', 'admin']:
             edit_pk = request.GET['edit_pedido']
-            pedido_form = PedidoReposicionForm(instance=get_object_or_404(PedidoReposicion, pk=edit_pk))
+            pedido_instance = get_object_or_404(Pedido, pk=edit_pk)
+            pedido_form = PedidoForm(instance=pedido_instance)
+            pedido_item_formset = PedidoItemFormSet(instance=pedido_instance)
             active_panel = 'concepto-egreso'
     
     if request.method == 'POST':
@@ -149,9 +189,10 @@ def dashboard(request):
         
 
         if form_type in ['ingreso', 'egreso']:
-            if stock_entry_form.is_valid():
-                producto = stock_entry_form.cleaned_data['producto']
-                cantidad = stock_entry_form.cleaned_data['cantidad']
+            form = stock_entry_form if form_type == 'ingreso' else stock_exit_form
+            if form.is_valid():
+                producto = form.cleaned_data['producto']
+                cantidad = form.cleaned_data['cantidad']
 
                 with transaction.atomic(): 
                     inv, _ = Inventario.objects.get_or_create(
@@ -166,32 +207,31 @@ def dashboard(request):
                         else:
                             inv.cantidad += cantidad
                             inv.save()
-                            operacion_exitosa = True
+                            Transaction.objects.create(
+                                inventario=inv,
+                                tipo=form_type,
+                                cantidad=cantidad
+                            )
                             messages.success(request, 'Ingreso registrado.')
-                            return redirect(reverse('dashboard') + '?panel=ingreso')
+                            return redirect(reverse('dashboard'))
 
                     elif form_type == 'egreso':
                         if cantidad <= 0:
                             messages.error(request, 'Cantidad debe ser positiva para egreso.')
-                        elif cantidad > inv.cantidad:
-                            messages.error(request, f'No hay suficiente stock de "{producto.nombre}". Stock actual: {inv.cantidad}. Solicitado: {cantidad}.')
+                        elif cantidad > (inv.cantidad - inv.stock_reservado):  # Usar disponible en lugar de cantidad
+                            messages.error(request, f'No hay suficiente stock disponible de "{producto.nombre}". Stock disponible: {inv.cantidad - inv.stock_reservado}. Solicitado: {cantidad}.')
                         else:
                             inv.cantidad -= cantidad
                             inv.save()
-                            operacion_exitosa = True
+                            Transaction.objects.create(
+                                inventario=inv,
+                                tipo=form_type,
+                                cantidad=cantidad
+                            )
                             messages.success(request, 'Egreso registrado.')
-                            return redirect(reverse('dashboard') + '?panel=ingreso')
+                            return redirect(reverse('dashboard'))
 
-                    if operacion_exitosa:
-                        Transaction.objects.create(
-                            inventario=inv,
-                            tipo=form_type,
-                            cantidad=cantidad
-                        )
-                        redirect_panel = 'dashboard'
-                    else:
-                        
-                        active_panel = 'ingreso' if form_type == 'ingreso' else 'egreso'
+                    active_panel = 'ingreso' if form_type == 'ingreso' else 'egreso'
 
             else:
                 messages.error(request, 'Error en el formulario de stock.')
@@ -233,21 +273,57 @@ def dashboard(request):
             return redirect(reverse('dashboard') + '?panel=centro')
         
         elif form_type == 'pedido' and role in ['bodeguero', 'admin']:
-            pk = request.POST.get('pk')
-            instance = get_object_or_404(PedidoReposicion, pk=pk) if pk else None
-            pedido_form = PedidoReposicionForm(request.POST, instance=instance)
-            if pedido_form.is_valid():
-                pedido_form.save()
-                messages.success(request, 'Pedido guardado exitosamente.')
-                return redirect(reverse('dashboard') + '?panel=concepto-egreso')
-            else:
-                messages.error(request, 'Error en el formulario de pedido.')
-                active_panel = 'concepto-ingreso'  
+                pk = request.POST.get('pk')
+                # Detectamos si es creación o edición
+                es_nuevo = pk is None or pk == ''
+                
+                instance = get_object_or_404(Pedido, pk=pk) if pk else None
+                pedido_form = PedidoForm(request.POST, instance=instance)
+                pedido_item_formset = PedidoItemFormSet(request.POST, instance=instance)
+
+                if pedido_form.is_valid() and pedido_item_formset.is_valid():
+                    try:
+                        with transaction.atomic():
+                            # 1. Guardar el Pedido (Padre)
+                            pedido = pedido_form.save()
+                            
+                            # 2. Guardar los Ítems (Hijos)
+                            pedido_item_formset.instance = pedido
+                            pedido_item_formset.save()
+                            
+                          
+                            if es_nuevo and pedido.estado in ['Pendiente', 'Entransito']:
+                                for item in pedido.items.all():
+                                    # Obtener inventario
+                                    try:
+                                        inv = Inventario.objects.get(producto=item.producto)
+                                    except Inventario.DoesNotExist:
+                                        raise ValidationError(f"El producto {item.producto.nombre} no tiene inventario creado.")
+
+                                    # Validar stock disponible
+                                    disponible = inv.cantidad - inv.stock_reservado
+                                    if disponible < item.cantidad:
+                                        raise ValidationError(f"Stock insuficiente para {item.producto.nombre}. Disponible: {disponible}, Solicitado: {item.cantidad}")
+                                    
+                                    # Reservar
+                                    inv.stock_reservado += item.cantidad
+                                    inv.save()
+
+                        messages.success(request, 'Pedido guardado exitosamente.')
+                        return redirect(reverse('dashboard') + '?panel=concepto-egreso')
+                    
+                    except ValidationError as e:
+                        # Capturamos el error de validación manual y deshacemos todo (gracias a transaction.atomic)
+                        messages.error(request, f'Error de validación: {e.message if hasattr(e, "message") else str(e)}')
+                        active_panel = 'concepto-egreso'
+                else:
+                    messages.error(request, 'Error en el formulario. Revisa los campos.')
+                    active_panel = 'concepto-egreso'  
             
         
         elif form_type == 'delete_pedido' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
-            get_object_or_404(PedidoReposicion, pk=pk).delete()
+            get_object_or_404(Pedido, pk=pk).delete()
             messages.success(request, 'Pedido eliminado.')
             return redirect(reverse('dashboard') + '?panel=concepto-egreso')
             
@@ -259,9 +335,13 @@ def dashboard(request):
             content = ''
             qs = Transaction.objects.all()
             if fecha_desde:
-                qs = qs.filter(fecha__gte=fecha_desde)
+                fecha_desde_dt = datetime.strptime(fecha_desde, '%Y-%m-%d')
+                fecha_desde_dt = timezone.make_aware(fecha_desde_dt)
+                qs = qs.filter(fecha__gte=fecha_desde_dt)
             if fecha_hasta:
-                qs = qs.filter(fecha__lte=fecha_hasta)
+                fecha_hasta_dt = datetime.strptime(fecha_hasta, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+                fecha_hasta_dt = timezone.make_aware(fecha_hasta_dt)
+                qs = qs.filter(fecha__lte=fecha_hasta_dt)
             if tipo == 'Ingreso':
                 qs = qs.filter(tipo='ingreso')
                 content = "\n".join([f"{t.inventario.producto.nombre}: +{t.cantidad} el {t.fecha}" for t in qs])
@@ -297,12 +377,15 @@ def dashboard(request):
         
         
     context = {
+        
         'empresa': empresa,
         'stock_exit_form': stock_exit_form,
         'vigencia_plan': vigencia_plan,
         'total_productos': total_productos,
         'stock_bajo': stock_bajo,
         'total_inventario': total_inventario,
+        'total_reservado': total_reservado,
+        'total_disponible': total_disponible,
         'total_valor': total_valor,
         'inventarios': inventarios,
         'pedidos_vencidos': pedidos_vencidos,
@@ -317,6 +400,7 @@ def dashboard(request):
         'proveedor_form': proveedor_form,
         'producto_form': producto_form,
         'pedido_form': pedido_form,
+        'pedido_item_formset': pedido_item_formset,
         'user_form': user_form,
         'active_panel': active_panel,
         'role': role,  
@@ -325,6 +409,23 @@ def dashboard(request):
         'ultimos_movimientos': ultimos_movimientos,
     }
     return render(request, 'dashboard.html', context)
+
+def pedido_detalle(request, pk):
+    pedido = get_object_or_404(Pedido, pk=pk)
+    context = {'pedido': pedido}
+    return render(request, 'pedido_detalle.html', context)
+
+def generar_qr(request, pk):
+    pedido = get_object_or_404(Pedido, pk=pk)
+    url = request.build_absolute_uri(reverse('pedido_detalle', args=[pk]))
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    return JsonResponse({'qr_base64': qr_base64})
 
 def user_login(request):
     if request.method == 'POST':
@@ -343,4 +444,3 @@ def user_logout(request):
     logout(request)
     messages.success(request, 'Sesión cerrada.')
     return redirect('login')
-    
