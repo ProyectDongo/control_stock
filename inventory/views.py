@@ -214,7 +214,26 @@ def dashboard(request):
                             )
                             messages.success(request, 'Ingreso registrado.')
                             return redirect(reverse('dashboard'))
-
+                    elif form_type == 'completar_pedido':
+                            if role not in ['trabajador', 'bodeguero', 'admin']:
+                                return JsonResponse({'success': False, 'message': 'No tienes permiso.'})
+                            
+                            pedido_id = request.POST.get('pedido_id')
+                            try:
+                                pedido = get_object_or_404(Pedido, pk=pedido_id)
+                                if pedido.estado != 'Pendiente':
+                                    return JsonResponse({'success': False, 'message': 'El pedido ya no está pendiente.'})
+                                
+                                with transaction.atomic():
+                                    pedido.estado = 'Completado'
+                                    pedido.save()  # Esto activará el post_save que hace el egreso y libera reserva
+                                    
+                                return JsonResponse({
+                                    'success': True,
+                                    'message': f'Pedido #{pedido_id} completado exitosamente. Stock actualizado.'
+                                })
+                            except Exception as e:
+                                return JsonResponse({'success': False, 'message': str(e)})
                     elif form_type == 'egreso':
                         if cantidad <= 0:
                             messages.error(request, 'Cantidad debe ser positiva para egreso.')
@@ -264,7 +283,7 @@ def dashboard(request):
                 messages.success(request, 'Proveedor guardado exitosamente.')
             else:
                 messages.error(request, 'Error en el formulario de proveedor.')
-                return redirect(reverse('dashboard') + '?panel=centro')
+                active_panel = 'centro'  
         
         elif form_type == 'delete_proveedor' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
@@ -444,3 +463,83 @@ def user_logout(request):
     logout(request)
     messages.success(request, 'Sesión cerrada.')
     return redirect('login')
+
+
+@login_required
+def completar_pedido_qr(request):
+    if request.method == 'POST':
+        pedido_id = request.POST.get('pedido_id')
+        if not pedido_id:
+            return JsonResponse({'success': False, 'message': 'ID de pedido no proporcionado.'}, status=400)
+
+        try:
+            pedido = get_object_or_404(Pedido, id=pedido_id)
+
+            if pedido.estado == 'Completado':
+                return JsonResponse({'success': False, 'message': 'Este pedido ya fue completado anteriormente.'})
+
+            with transaction.atomic():
+                for item in pedido.items.all():
+                    # Asumiendo que PedidoItem tiene campo 'cantidad' en unidades base
+                    cantidad_necesaria = item.cantidad  # Ajusta si hay factor_conversion
+
+                    inv = get_object_or_404(Inventario, producto=item.producto)
+
+                    if inv.cantidad < cantidad_necesaria:
+                        return JsonResponse({
+                            'success': False,
+                            'message': f'Stock insuficiente para {item.producto.nombre}. Disponible: {inv.cantidad}'
+                        })
+
+                    # Descontar stock físico
+                    inv.cantidad -= cantidad_necesaria
+                    # Liberar reserva (si estaba reservado al crear pedido)
+                    if inv.stock_reservado >= cantidad_necesaria:
+                        inv.stock_reservado -= cantidad_necesaria
+                    else:
+                        inv.stock_reservado = 0
+                    inv.save()
+
+                    # Registrar movimiento
+                    Transaction.objects.create(
+                        inventario=inv,
+                        tipo='egreso',
+                        cantidad=cantidad_necesaria,
+                        descripcion=f"Egreso por completado de Pedido #{pedido.id}"
+                    )
+
+                pedido.estado = 'Completado'
+                pedido.save()
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Pedido #{pedido.id} completado exitosamente. Stock actualizado.'
+            })
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+    return JsonResponse({'success': False, 'message': 'Método no permitido.'}, status=405)
+def pedido_qr_publico(request, pk):
+    """
+    Vista pública: Muestra el detalle del pedido con QR grande.
+    Accesible sin login, ideal para enviar por WhatsApp.
+    """
+    pedido = get_object_or_404(Pedido, pk=pk)
+    
+    # Generar QR (mismo código que en generar_qr)
+    url_detalle = request.build_absolute_uri(reverse('pedido_qr_publico', args=[pk]))
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(url_detalle)
+    qr.make(fit=True)
+    img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    context = {
+        'pedido': pedido,
+        'qr_base64': qr_base64,
+        'url_qr': url_detalle,  # Para compartir
+    }
+    return render(request, 'pedido_qr_publico.html', context)

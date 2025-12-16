@@ -40,12 +40,12 @@ class Producto(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField()
     unidad = models.CharField(max_length=50)
-    precio_unitario = models.DecimalField(
-        max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)],
+    precio_unitario = models.PositiveIntegerField(
+         validators=[MinValueValidator(1)],
         verbose_name="Precio Costo"
     )
-    precio_venta = models.DecimalField(
-        max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)],
+    precio_venta = models.PositiveIntegerField(
+          validators=[MinValueValidator(1)],
         default=0, verbose_name="Precio Venta"
     )
 

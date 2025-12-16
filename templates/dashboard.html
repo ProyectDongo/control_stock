@@ -7,8 +7,10 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/home.css' %}">
 {% endblock %}
@@ -344,29 +346,63 @@
       </div>
 
       <!-- PANEL: Egreso de Stock -->
-      <div id="panel-egreso" class="panel {% if active_panel != 'egreso' %}d-none{% endif %}"
-      style="width: 40%;">
-        <div class="form-container">
-          <h3 class="form-section-title">Egreso de Stock</h3>
-          <form method="post" id="form-egreso" class="compact-form">
-            {% csrf_token %}
-            <input type="hidden" name="form_type" value="egreso">
-            {{ stock_exit_form|crispy }}
-            <div class="d-flex justify-content-end mt-4">
-              <button class="btn btn-danger btn-action" type="submit">
-                <i class="fas fa-minus-circle me-2"></i>Registrar Egreso
-              </button>
-            </div>
-          </form>
+      <div id="panel-egreso" class="panel {% if active_panel != 'egreso' %}d-none{% endif %}" style="width: 90%; max-width: 600px; margin: 0 auto;">
+        <div class="form-container text-center">
+          <h3 class="form-section-title mb-4">Egreso de Stock - Completar Pedido</h3>
+          
+          <div class="alert alert-info">
+            <i class="fas fa-qrcode fa-2x mb-3"></i>
+            <h5>Escanea el QR del pedido</h5>
+            <p>Pulsa el botón para activar la cámara y apunta al código QR del pedido.</p>
+          </div>
+
+          <!-- Botón grande para iniciar escáner -->
+          <button id="start-scanner-btn" class="btn btn-success btn-lg mb-4">
+            <i class="fas fa-camera fa-2x"></i><br>
+            Iniciar Escáner QR
+          </button>
+
+          <!-- Área donde aparecerá la cámara -->
+          <div id="qr-reader" style="width: 100%; max-width: 500px; margin: 0 auto; display: none;"></div>
+          <div id="qr-reader-results" class="mt-3"></div>
+
+          <!-- Formulario manual como fallback -->
+          <div class="mt-5 p-4 border rounded bg-light">
+            <h5 class="mb-3">O usa el formulario manual</h5>
+            <form method="post" class="compact-form">
+              {% csrf_token %}
+              <input type="hidden" name="form_type" value="egreso">
+              {{ stock_exit_form|crispy }}
+              <div class="d-flex justify-content-end mt-4">
+                <button class="btn btn-danger btn-action" type="submit">
+                  <i class="fas fa-minus-circle me-2"></i>Registrar Egreso Manual
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
 
       <!-- PANEL: Proveedores -->
       <div id="panel-centro" class="panel {% if active_panel != 'centro' %}d-none{% endif %}"
-      style="width: 40%;">
+      style="width: 60%;">
         <div class="form-container">
           <h3 class="form-section-title">Nuevo Proveedor</h3>
           <form method="post" class="compact-form">
+          {% if form.errors %}
+            <div class="alert alert-danger">
+                <ul>
+                    {% for field in form %}
+                        {% for error in field.errors %}
+                            <li>{{ field.label }}: {{ error }}</li>
+                        {% endfor %}
+                    {% endfor %}
+                    {% for error in form.non_field_errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
             {% csrf_token %}
             <input type="hidden" name="form_type" value="proveedor">
             {% if proveedor_form.instance.pk %}
@@ -675,8 +711,10 @@
                 </td>
                 <td>
                   <button class="btn btn-info btn-sm generate-qr" data-pk="{{ ped.pk }}">Generar QR</button>
-                  <a href="#" class="btn btn-success btn-sm send-whatsapp" data-pk="{{ ped.pk }}" style="display:none;">Enviar WhatsApp</a>
-                  <img class="qr-image" src="" style="display:none; width:100px;">
+                  <a href="#" class="btn btn-success btn-sm send-whatsapp" style="display:none; margin-left:5px;">
+                    <i class="fab fa-whatsapp"></i> Enviar Link
+                  </a>
+                  <img class="qr-image" src="" alt="QR Code" style="display:none; max-width:150px; margin:10px 0;">
                 </td>
               </tr>
               {% endfor %}
@@ -802,134 +840,105 @@
   
 </div>
 
- 
-
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
-
-<<script>
+<script>
 document.addEventListener('DOMContentLoaded', function () {
   
-  // 1. Lógica de Pestañas (Sidebar)
+  // Variable para saber el panel activo (la pasamos desde Django)
+  const activePanel = '{{ active_panel }}';  // <-- Ahora sí existe en JS
+
+  // 1. Lógica de pestañas (Sidebar)
   const sidebarBtns = document.querySelectorAll('.sidebar-btn');
   sidebarBtns.forEach(btn => {
     btn.addEventListener('click', function () {
-      // Ocultar todos los paneles
       document.querySelectorAll('.panel').forEach(p => p.classList.add('d-none'));
-      // Mostrar el seleccionado
       const targetSelector = this.dataset.target;
       const targetPanel = document.querySelector(targetSelector);
-      if(targetPanel) targetPanel.classList.remove('d-none');
+      if (targetPanel) targetPanel.classList.remove('d-none');
       
-      // Activar botón
       sidebarBtns.forEach(b => b.classList.remove('active'));
       this.classList.add('active');
     });
   });
 
-  // 2. Lógica para AÑADIR ÍTEMS (FORMSET) - CORREGIDA
+  // 2. Añadir ítems al pedido (formset)
   const addItemBtn = document.getElementById('add-item');
   if (addItemBtn) {
     addItemBtn.addEventListener('click', function (e) {
-        e.preventDefault(); // Prevenir cualquier submit accidental
-        
-        const formContainer = document.getElementById('item-forms');
-        const totalFormsInput = document.getElementById('id_items-TOTAL_FORMS'); // Django suele usar id_items-TOTAL_FORMS
-        
-        // Fallback por si el ID no es estándar
-        const totalFormsAlt = document.querySelector('[name="items-TOTAL_FORMS"]');
-        const totalForms = totalFormsInput || totalFormsAlt;
+      e.preventDefault();
+      
+      const formContainer = document.getElementById('item-forms');
+      const totalForms = document.querySelector('[name="items-TOTAL_FORMS"]');
+      
+      if (!totalForms || !formContainer) return;
 
-        if (!totalForms || !formContainer) {
-            console.error("Error: No se encontró el contenedor de forms o el input TOTAL_FORMS");
-            return;
-        }
+      const currentFormCount = parseInt(totalForms.value);
+      const templateForm = formContainer.firstElementChild;
+      if (!templateForm) return;
 
-        // Obtener el índice actual
-        const currentFormCount = parseInt(totalForms.value);
-        
-        // Clonar el primer formulario del set (la plantilla base)
-        // Nota: Asegúrate de que Django envíe al menos 1 form (extra=1)
-        const templateForm = formContainer.firstElementChild; 
-        if (!templateForm) {
-            console.error("No hay formulario base para clonar");
-            return;
-        }
+      const newForm = templateForm.cloneNode(true);
+      newForm.innerHTML = newForm.innerHTML.replace(/items-\\d+-/g, `items-${currentFormCount}-`);
+      
+      newForm.querySelectorAll('input, select, textarea').forEach(input => {
+        input.value = '';
+        if (input.type === 'checkbox' || input.type === 'radio') input.checked = false;
+      });
 
-        const newForm = templateForm.cloneNode(true);
-
-        // Reemplazar los índices en el HTML del nuevo formulario
-        // Busca 'items-0-' (u otro número) y lo reemplaza por 'items-NUEVOINDICE-'
-        const regex = new RegExp(`items-\\d+-`, 'g');
-        newForm.innerHTML = newForm.innerHTML.replace(regex, `items-${currentFormCount}-`);
-
-        // Limpiar los valores de los inputs del nuevo formulario
-        const inputs = newForm.querySelectorAll('input, select, textarea');
-        inputs.forEach(input => {
-            input.value = '';
-            // Quitar atributos value predefinidos para evitar que reaparezcan datos antiguos
-            input.removeAttribute('value'); 
-            // Si es checkbox, desmarcar
-            if(input.type === 'checkbox' || input.type === 'radio') input.checked = false;
-        });
-
-        // Insertar el nuevo formulario
-        formContainer.appendChild(newForm);
-
-        // Actualizar el contador total
-        totalForms.value = currentFormCount + 1;
+      formContainer.appendChild(newForm);
+      totalForms.value = currentFormCount + 1;
     });
   }
 
-  // 3. Lógica de Gráficos (Protegida contra errores si Chart no carga)
+  // 3. Gráficos
   if (typeof Chart !== 'undefined') {
-      const ctxMovements = document.getElementById('movementsChart');
-      if (ctxMovements) {
-        new Chart(ctxMovements.getContext('2d'), {
-          type: 'line',
-          data: {
-            labels: {{ stock_data.labels|safe }},
-            datasets: [{
-              label: 'Ingresos',
-              data: {{ stock_data.ingresos|safe }},
-              borderColor: 'rgba(75, 192, 192, 1)',
-              backgroundColor: 'rgba(75, 192, 192, 0.2)',
-            }, {
-              label: 'Egresos',
-              data: {{ stock_data.egresos|safe }},
-              borderColor: 'rgba(255, 99, 132, 1)',
-              backgroundColor: 'rgba(255, 99, 132, 0.2)',
-            }]
-          },
-          options: { responsive: true }
-        });
-      }
-      
-      const ctxProfits = document.getElementById('profitsChart');
-      if (ctxProfits) {
-          new Chart(ctxProfits.getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: {{ profits_data.labels|safe }},
-                datasets: [{
-                label: 'Ganancia Estimada',
-                data: {{ profits_data.ganancias|safe }},
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-                }]
-            },
-            options: { responsive: true }
-          });
-      }
-  } else {
-      console.warn('Chart.js no se ha cargado correctamente.');
+    const ctxMovements = document.getElementById('movementsChart');
+    if (ctxMovements) {
+      new Chart(ctxMovements.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: {{ stock_data.labels|safe }},
+          datasets: [{
+            label: 'Ingresos',
+            data: {{ stock_data.ingresos|safe }},
+            borderColor: 'rgba(75, 192, 192, 1)',
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          }, {
+            label: 'Egresos',
+            data: {{ stock_data.egresos|safe }},
+            borderColor: 'rgba(255, 99, 132, 1)',
+            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          }]
+        },
+        options: { responsive: true }
+      });
+    }
+    
+    const ctxProfits = document.getElementById('profitsChart');
+    if (ctxProfits) {
+      new Chart(ctxProfits.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: {{ profits_data.labels|safe }},
+          datasets: [{
+            label: 'Ganancia Estimada',
+            data: {{ profits_data.ganancias|safe }},
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: { responsive: true }
+      });
+    }
   }
 
-  // 4. Lógica de QR
+  // 4. Lógica de QR en lista de pedidos
   document.querySelectorAll('.generate-qr').forEach(btn => {
     btn.addEventListener('click', function () {
       const pk = this.dataset.pk;
+      
       fetch(`/generar_qr/${pk}/`)
         .then(response => response.json())
         .then(data => {
@@ -937,28 +946,204 @@ document.addEventListener('DOMContentLoaded', function () {
           const img = row.querySelector('.qr-image');
           const waBtn = row.querySelector('.send-whatsapp');
           
-          if(img) {
-              img.src = `data:image/png;base64,${data.qr_base64}`;
-              img.style.display = 'block';
+          if (img) {
+            img.src = `data:image/png;base64,${data.qr_base64}`;
+            img.style.display = 'block';
           }
-          if(waBtn) {
-              waBtn.style.display = 'inline-block';
-              waBtn.href = `https://wa.me/?text=Pedido ${pk}: ${window.location.origin}/pedido/${pk}/detalle/`;
-          }
+
+          // Descarga automática + alerta
+          const downloadLink = document.createElement('a');
+          downloadLink.href = `data:image/png;base64,${data.qr_base64}`;
+          downloadLink.download = `QR_Pedido_${pk}.png`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+
+          alert(`¡QR del Pedido #${pk} descargado!\n\nEstá en tu carpeta "Descargas" como:\nQR_Pedido_${pk}.png\n\nCuando abras WhatsApp:\n1. Elige el contacto\n2. Pulsa el clip 📎\n3. Selecciona la imagen (está arriba del todo)\n4. Envía`);
+
+          if (waBtn) {
+            const urlPublica = `${window.location.origin}/pedido/${pk}/qr/`;
+            const mensaje = encodeURIComponent(
+                `¡Hola! Aquí tienes el detalle de tu pedido #${pk}\n\n` +
+                `Escanea el código QR para confirmar la entrega:\n\n` +
+                urlPublica
+            );
+
+            waBtn.href = `https://wa.me/?text=${mensaje}`;
+            waBtn.target = "_blank";
+            waBtn.style.display = 'inline-block';
+            waBtn.innerHTML = '<i class="fab fa-whatsapp"></i> Enviar Link por WhatsApp';
+        }
         })
-        .catch(err => console.error("Error generando QR", err));
+        .catch(err => {
+          console.error("Error generando QR", err);
+          alert("Error al generar el código QR");
+        });
     });
   });
 
+  // 5. Escáner QR para Egreso de Stock (solo si estamos en el panel egreso)
+  const startBtn = document.getElementById('start-scanner-btn');
+  const readerDiv = document.getElementById('qr-reader');
+  const resultsDiv = document.getElementById('qr-reader-results');
+  let scanner = null;
+
+  if (startBtn) {
+      startBtn.addEventListener('click', function () {
+        // --- CASO: DETENER ESCÁNER ---
+        if (scanner) {
+          stopScanner();
+          return;
+        }
+
+        // --- CASO: INICIAR ESCÁNER ---
+        startBtn.innerHTML = '<i class="fas fa-stop fa-2x"></i><br>Detener Escáner';
+        startBtn.classList.remove('btn-success');
+        startBtn.classList.add('btn-danger');
+        readerDiv.style.display = 'block';
+        resultsDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Iniciando cámara...</div>';
+
+        const config = { 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0
+        };
+
+        scanner = new Html5QrcodeScanner("qr-reader", config, false);
+
+        scanner.render(onScanSuccess, onScanFailure);
+      });
+  }
+
+  // FUNCIÓN: ÉXITO AL LEER (Cualquier QR)
+  function onScanSuccess(decodedText, decodedResult) {
+      // 1. Intentar extraer el ID
+      let pedidoId = null;
+      const urlMatch = decodedText.match(/pedido\/(\d+)/);      
+      if (urlMatch) {
+        pedidoId = urlMatch[1];
+      } else if (!isNaN(decodedText) && decodedText.trim().length > 0) {
+        pedidoId = decodedText; // Es solo números
+      }
+
+      // 2. Si NO es un ID válido, mostramos error pero seguimos escaneando (o pausamos)
+      if (!pedidoId) {
+          resultsDiv.innerHTML = `
+            <div class="alert alert-warning role="alert">
+                <i class="fas fa-exclamation-triangle"></i> QR Leído: "${decodedText}" <br> 
+                <strong>No parece ser un pedido válido.</strong> Intenta de nuevo.
+            </div>`;
+          return; // Salimos, el escáner sigue activo para buscar otro
+      }
+
+      // 3. Si ES un ID válido -> DETENEMOS TODO Y PROCESAMOS
+      if (scanner) {
+          scanner.clear().then(() => {
+              scanner = null;
+              readerDiv.style.display = 'none';
+              startBtn.style.display = 'none'; // Ocultamos botón para evitar doble clic
+              
+              // FEEDBACK VISUAL INMEDIATO
+              resultsDiv.innerHTML = `
+                <div class="card text-center shadow">
+                    <div class="card-body">
+                        <h4 class="text-primary"><i class="fas fa-check-circle"></i> Pedido #${pedidoId} Detectado</h4>
+                        <p class="lead">Procesando salida de stock...</p>
+                        <div class="spinner-border text-primary" role="status"></div>
+                    </div>
+                </div>
+              `;
+
+              // PROCESAR EN SERVIDOR
+              enviarAlServidor(pedidoId);
+          });
+      }
+  }
+
+  // FUNCIÓN: ERROR DE LECTURA (Ocurre mucho mientras busca, mejor ignorar o loguear poco)
+  function onScanFailure(error) {
+      // No hacer nada visual aquí para no saturar al usuario
+      // console.warn(`Code scan error = ${error}`);
+  }
+
+  // FUNCIÓN AUXILIAR: ENVIAR DATOS
+  function enviarAlServidor(pedidoId) {
+      fetch("{% url 'completar_pedido_qr' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: new URLSearchParams({
+            'form_type': 'completar_pedido',
+            'pedido_id': pedidoId
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              // ÉXITO: MOSTRAR MENSAJE VERDE Y LUEGO RECARGAR
+              resultsDiv.innerHTML = `
+                <div class="alert alert-success text-center py-5">
+                    <h1><i class="fas fa-check-circle"></i></h1>
+                    <h3>¡Éxito!</h3>
+                    <p>${data.message}</p>
+                    <p>Recargando...</p>
+                </div>`;
+              setTimeout(() => location.reload(), 2000); // Espera 2 seg y recarga
+          } else {
+              // ERROR DE LÓGICA (Ej: Stock insuficiente): MOSTRAR ROJO
+              mostrarErrorYReiniciar(`Error: ${data.message}`);
+          }
+      })
+      .catch(error => {
+          // ERROR DE RED
+          mostrarErrorYReiniciar("Error de conexión con el servidor.");
+      });
+  }
+
+  // FUNCIÓN AUXILIAR: DETENER
+  function stopScanner() {
+      if(scanner) {
+          scanner.clear().then(() => {
+            scanner = null;
+            readerDiv.style.display = 'none';
+            resultsDiv.innerHTML = '';
+            startBtn.innerHTML = '<i class="fas fa-camera fa-2x"></i><br>Iniciar Escáner QR';
+            startBtn.classList.remove('btn-danger');
+            startBtn.classList.add('btn-success');
+          });
+      }
+  }
+
+  // FUNCIÓN AUXILIAR: MOSTRAR ERROR Y PERMITIR REINTENTAR
+  function mostrarErrorYReiniciar(mensaje) {
+      resultsDiv.innerHTML = `
+        <div class="alert alert-danger text-center">
+            <h4><i class="fas fa-times-circle"></i> Ocurrió un problema</h4>
+            <p>${mensaje}</p>
+            <button class="btn btn-outline-danger mt-3" onclick="location.reload()">
+                <i class="fas fa-redo"></i> Recargar página
+            </button>
+        </div>`;
+  }
+
 });
 
-// Función global fuera del DOMContentLoaded
+   
+
+// Función para descargar reportes en PDF (fuera del DOMContentLoaded)
 function downloadReport(id) {
   const el = document.getElementById('report-' + id);
   if (!el || typeof html2pdf === 'undefined') {
-      alert("Error: Librería PDF no cargada o elemento no encontrado");
-      return;
+    alert("Error: Librería PDF no cargada o reporte no encontrado");
+    return;
   }
-  html2pdf().from(el).set({ margin: 1, filename: 'reporte.pdf', html2canvas: { scale: 2 } }).save();
+  html2pdf().from(el).set({
+    margin: 1,
+    filename: 'reporte.pdf',
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+  }).save();
 }
 </script>
