@@ -1,15 +1,18 @@
 :root {
-  --primary-color: #2c3e50;
-  --secondary-color: #3498db;
-  --accent-color: #2980b9;
+  --primary-color: #0a4a7a;
+  --secondary-color: #1a936f;
+  --accent-color: #e67e22;
   --success-color: #27ae60;
   --danger-color: #e74c3c;
   --warning-color: #f39c12;
   --light-bg: #f8f9fa;
   --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  --border-radius: 10px;
+  --border-radius: 12px;
+  --sidebar-width: 280px;
+  --sidebar-collapsed: 70px;
 }
 
+/* Reset y configuraciones base */
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background-color: #f5f7fa;
@@ -17,13 +20,15 @@ body {
   line-height: 1.6;
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
 }
 
-/* Layout principal */
+/* Layout principal mejorado */
 .main-container {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+ 
 }
 
 .content-row {
@@ -31,41 +36,57 @@ body {
   display: flex;
   flex-direction: row;
   margin: 0;
-  justify-content: space-between;
+  position: relative;
 }
 
-@media (max-width: 992px) {
-  .content-row {
-    flex-direction: column;
-  }
-}
-
-/* Sidebar mejorado */
+/* ============ SIDEBAR FIJADO MEJORADO ============ */
 .sidebar {
-  background: linear-gradient(180deg, var(--primary-color) 0%, #1a2530 100%);
+  background: linear-gradient(180deg, var(--primary-color) 0%, #0d7a8c 100%);
   color: white;
-  min-height: 100%;
-  box-shadow: 3px 0 10px rgba(0,0,0,0.1);
+  min-height: calc(100vh - 60px);
+  box-shadow: 3px 0 15px rgba(0,0,0,0.1);
   display: flex;
   flex-direction: column;
   padding: 1.5rem 1rem;
-  position: relative;
-  z-index: 100;
-  width: 280px;
+ 
+  left: 0;
+ 
+
+  z-index: 1000;
+  width: var(--sidebar-width);
+  overflow-y: auto;
+  transition: transform 0.3s ease;
 }
 
-@media (max-width: 992px) {
-  .sidebar {
-    width: 100%;
-    min-height: auto;
-    margin-bottom: 1rem;
-  }
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
 }
 
 .sidebar-brand {
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(255,255,255,0.15);
   margin-bottom: 1.5rem;
+}
+
+.sidebar-brand h5 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-brand small {
+  font-size: 0.8rem;
+  opacity: 0.8;
 }
 
 .sidebar-btn {
@@ -75,51 +96,329 @@ body {
   margin-bottom: 8px;
   transition: all 0.3s;
   border: none;
-  color: #ecf0f1;
+  color: rgba(255, 255, 255, 0.9);
   background-color: rgba(255,255,255,0.05);
   width: 100%;
   font-size: 0.95rem;
   display: flex;
   align-items: center;
+  white-space: nowrap;
 }
 
 .sidebar-btn:hover {
   background-color: rgba(255,255,255,0.15);
   transform: translateX(5px);
+  color: white;
 }
 
 .sidebar-btn.active {
-  background-color: var(--secondary-color);
+  background-color: var(--accent-color);
   color: white;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+  box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
 }
 
 .sidebar-btn i {
-  width: 22px;
+  width: 24px;
   margin-right: 12px;
   font-size: 1.1rem;
+  text-align: center;
 }
 
-/* Contenido principal */
+/* ============ CONTENIDO PRINCIPAL RESPONSIVE ============ */
 .main-content {
-  padding: 2rem;
   flex-grow: 1;
-  overflow-y: auto;
+  padding: 2rem;
+  margin-left: var(--sidebar-width);
+  min-height: calc(100vh - 60px);
+  width: calc(100% - var(--sidebar-width));
+  transition: all 0.3s ease;
 }
 
+/* Panel base - 60%/40% de anchos específicos */
+.panel {
+  animation: fadeIn 0.3s ease-in-out;
+  margin: 0 auto;
+  max-width: 1200px;
+}
+
+/* Paneles específicos con anchos personalizados */
+#panel-ingreso,
+#panel-centro,
+#panel-concepto-ingreso,
+#panel-concepto-egreso,
+#panel-rcv,
+#panel-parametros-sii {
+  width: 60%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+#panel-egreso {
+  width: 40%;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+#panel-lista-pedidos {
+  width: 80%;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+#panel-graficos {
+  width: 95%;
+  margin: 0 auto;
+}
+
+/* ============ HEADER MÓVIL (para sidebar) ============ */
+.mobile-header {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--primary-color);
+  color: white;
+  padding: 1rem;
+  z-index: 1100;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.mobile-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mobile-menu-btn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+.mobile-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+/* ============ RESPONSIVE DESIGN ============ */
+
+/* Tablet (768px - 992px) */
 @media (max-width: 992px) {
+  .sidebar {
+    transform: translateX(-100%);
+    top: 0;
+    height: 100vh;
+    z-index: 2000;
+  }
+  
+  .sidebar.active {
+    transform: translateX(0);
+  }
+  
   .main-content {
+    margin-left: 0;
     width: 100%;
     padding: 1.5rem;
   }
+  
+  .mobile-header {
+    display: block;
+  }
+  
+  .main-container {
+    padding-top: 60px;
+  }
+  
+  /* Ajustar anchos de paneles en tablet */
+  #panel-ingreso,
+  #panel-centro,
+  #panel-concepto-ingreso,
+  #panel-concepto-egreso,
+  #panel-rcv,
+  #panel-parametros-sii,
+  #panel-egreso,
+  #panel-lista-pedidos {
+    width: 90%;
+    max-width: none;
+  }
+  
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem;
+  }
+  
+  .dashboard-sidebar-right {
+    order: -1;
+  }
+  
+  .stat-card {
+    padding: 1.5rem 1rem;
+  }
+  
+  .stat-value {
+    font-size: 1.8rem;
+  }
 }
 
+/* Móvil (576px - 768px) */
 @media (max-width: 768px) {
   .main-content {
     padding: 1rem;
   }
+  
+  .form-container,
+  .table-container {
+    padding: 1.25rem;
+  }
+  
+  .form-section-title {
+    font-size: 1.3rem;
+  }
+  
+  /* Stack de tarjetas de estadísticas */
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .col-md-3,
+  .col-md-4,
+  .col-md-6 {
+    width: 100%;
+    margin-bottom: 0;
+  }
+  
+  /* Tablas responsive con scroll horizontal */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .table {
+    min-width: 600px;
+  }
+  
+  /* Formularios más compactos */
+  .compact-form .form-group {
+    margin-bottom: 1rem;
+  }
+  
+  .compact-form .form-control,
+  .compact-form .form-select {
+    padding: 0.75rem;
+    font-size: 16px; /* Previene zoom en iOS */
+  }
+  
+  .btn-action {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1rem;
+  }
+  
+  /* QR Scanner en móvil */
+  #qr-reader {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .alert-container {
+    margin-left: 5% !important;
+    width: 90% !important;
+  }
 }
+
+/* Móvil pequeño (< 576px) */
+@media (max-width: 576px) {
+  .main-content {
+    padding: 0.75rem;
+  }
+  
+  .form-container,
+  .table-container {
+    padding: 1rem;
+    border-radius: 10px;
+  }
+  
+  .form-section-title {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .stat-card {
+    padding: 1.25rem 0.75rem;
+  }
+  
+  .stat-value {
+    font-size: 1.5rem;
+  }
+  
+  .stat-icon {
+    font-size: 2rem;
+  }
+  
+  /* Botones más grandes para toque fácil */
+  .sidebar-btn,
+  .btn-sm,
+  .btn-action {
+    min-height: 44px; /* Tamaño mínimo para toque */
+  }
+  
+  /* Ajustar anchos específicos de paneles */
+  #panel-ingreso,
+  #panel-centro,
+  #panel-concepto-ingreso,
+  #panel-concepto-egreso,
+  #panel-rcv,
+  #panel-parametros-sii,
+  #panel-egreso,
+  #panel-lista-pedidos,
+  #panel-graficos {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  
+  /* Dashboard grid en móvil */
+  .dashboard-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .dashboard-main,
+  .dashboard-sidebar-right {
+    width: 100%;
+  }
+  
+  .summary-list {
+    max-height: 300px;
+  }
+  
+  /* Mejorar visualización de productos en resumen */
+  .product-name {
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  /* Ajustar botones de acciones en tablas */
+  .table td:last-child {
+    position: sticky;
+    right: 0;
+    background: white;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+  }
+}
+
+/* ============ ESTILOS MEJORADOS EXISTENTES ============ */
 
 /* Tarjetas mejoradas */
 .card {
@@ -131,7 +430,7 @@ body {
 }
 
 .card:hover {
-  transform: translateY(-5px);
+  transform: translateY(-3px);
   box-shadow: 0 8px 20px rgba(0,0,0,0.12);
 }
 
@@ -139,10 +438,11 @@ body {
   text-align: center;
   padding: 2rem 1rem;
   transition: all 0.3s;
+  border-top: 4px solid transparent;
 }
 
 .stat-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-5px);
 }
 
 .stat-icon {
@@ -164,13 +464,7 @@ body {
   font-weight: 500;
 }
 
-@media (max-width: 768px) {
-  .stat-value {
-    font-size: 1.5rem;
-  }
-}
-
-/* Contenedores de formularios compactos */
+/* Contenedores de formularios */
 .form-container {
   background: white;
   border-radius: var(--border-radius);
@@ -180,21 +474,7 @@ body {
   width: 100%;
 }
 
-@media (max-width: 768px) {
-  .form-container {
-    padding: 1.25rem;
-  }
-}
-
-.form-section-title {
-  color: var(--primary-color);
-  border-bottom: 2px solid var(--secondary-color);
-  padding-bottom: 0.75rem;
-  margin-bottom: 1.75rem;
-  font-weight: 600;
-  font-size: 1.5rem;
-}
-
+/* Formularios compactos */
 .compact-form .form-group {
   margin-bottom: 1.25rem;
 }
@@ -218,7 +498,7 @@ body {
 .compact-form .form-control:focus, 
 .compact-form .form-select:focus {
   border-color: var(--secondary-color);
-  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+  box-shadow: 0 0 0 0.2rem rgba(26, 147, 111, 0.25);
 }
 
 /* Tablas mejoradas */
@@ -230,12 +510,6 @@ body {
   margin-top: 2rem;
   overflow: hidden;
   width: 100%;
-}
-
-@media (max-width: 768px) {
-  .table-container {
-    padding: 1.25rem;
-  }
 }
 
 .table thead th {
@@ -257,23 +531,7 @@ body {
 }
 
 .table tbody tr:hover {
-  background-color: rgba(52, 152, 219, 0.05);
-}
-
-.badge-ingreso {
-  background-color: var(--success-color);
-  color: white;
-  padding: 0.5rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.85rem;
-}
-
-.badge-egreso {
-  background-color: var(--danger-color);
-  color: white;
-  padding: 0.5rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.85rem;
+  background-color: rgba(26, 147, 111, 0.05);
 }
 
 /* Botones mejorados */
@@ -283,6 +541,7 @@ body {
   font-weight: 500;
   transition: all 0.2s;
   font-size: 0.95rem;
+  border: none;
 }
 
 .btn-primary {
@@ -291,177 +550,13 @@ body {
 }
 
 .btn-primary:hover {
-  background-color: var(--accent-color);
-  border-color: var(--accent-color);
+  background-color: #148f77;
+  border-color: #148f77;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
-/* Footer */
-.corporate-footer {
-  background-color: var(--primary-color);
-  color: white;
-  padding: 1.5rem 0;
-  font-size: 0.9rem;
-}
-
-/* Responsive adjustments */
-@media (max-width: 992px) {
-  .sidebar {
-    margin-left: 0;
-  }
-  
-  .main-content {
-    padding: 1.5rem;
-  }
-  
-  .form-container {
-    padding: 1.5rem;
-  }
-  
-  .stat-value {
-    font-size: 1.75rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .main-content {
-    padding: 1rem;
-  }
-  
-  .form-container {
-    padding: 1.25rem;
-  }
-  
-  .stat-value {
-    font-size: 1.5rem;
-  }
-  
-  .row {
-    flex-direction: column;
-  }
-  
-  .col-md-4 {
-    width: 100%;
-  }
-}
-
-/* Filtros en línea */
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  margin-bottom: 1.5rem;
-}
-
-.filter-item {
-  flex: 1;
-  min-width: 180px;
-}
-
-/* Badges */
-.badge-vigencia {
-  background-color: var(--warning-color);
-  font-size: 0.85rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 20px;
-}
-
-/* Centros de costo */
-.centros-list {
-  list-style-type: none;
-  padding-left: 0;
-}
-
-.centros-list li {
-  background: #f8f9fa;
-  padding: 14px 16px;
-  margin-bottom: 12px;
-  border-radius: 8px;
-  border-left: 4px solid var(--secondary-color);
-  transition: all 0.2s;
-}
-
-.centros-list li:hover {
-  background: #e9ecef;
-  transform: translateX(5px);
-}
-
-/* Guía de Colores (Legend) */
-.color-box {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  margin-right: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-.legend-text {
-  font-size: 0.9rem;
-  color: #555;
-}
-
-/* 1. Monto Alto BASE (Fondo Rojo) */
-.table-high-monto,
-.table-high-monto > td {
-  background-color: rgba(231, 76, 60, 0.25) !important; /* Fondo Rojo */
-}
-
-/* 2. Ajuste BASE (Fondo Amarillo, Borde Amarillo) */
-.table-ajuste,
-.table-ajuste > td {
-  background-color: rgba(243, 156, 18, 0.08) !important; /* Fondo Amarillo */
-} 
-.table-ajuste {
-  border-left:8px solid var(--warning-color);
-  border-right: 8px solid var(--warning-color); /* Borde Amarillo */
-}
-
-/* 3. REGLA COMBINADA: Ajuste + Monto Alto */
-/* Gana por mayor especificidad. Setear ambos a los valores deseados:
-   Fondo: Amarillo (Ajuste)
-   Borde: Rojo (Monto Alto) */
-.table-ajuste.table-high-monto,
-.table-ajuste.table-high-monto > td {
-  background-color: rgba(241, 124, 7, 0.233) !important; /* Fondo naranja */
-}
-.table-ajuste.table-high-monto {
-  border-left:8px solid var(--danger-color) !important;
-  border-right: 8px solid var(--danger-color) !important; /* Borde Rojo (utilizando la variable de peligro) */
-}
-
-/* Mejoras específicas para paneles */
-.panel {
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Indicadores visuales */
-.monto-inicial {
-  color: var(--primary-color);
-}
-
-.balance-actual {
-  color: var(--success-color);
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-  color: #6c757d;
-}
-
-.empty-state i {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  opacity: 0.5;
-}
-
-/* Dashboard Layout con barra lateral derecha */
+/* Dashboard Layout */
 .dashboard-grid {
   display: grid;
   grid-template-columns: 1fr 350px;
@@ -469,21 +564,10 @@ body {
   align-items: start;
 }
 
-.dashboard-main {
-  min-width: 0;
-}
+
 
 .dashboard-sidebar-right {
   height: 100%;
-}
-
-@media (max-width: 1200px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-  .dashboard-sidebar-right {
-    order: -1;
-  }
 }
 
 /* Tarjetas resumen lateral */
@@ -553,21 +637,93 @@ body {
   padding: 0.4em 0.8em;
 }
 
-/* Scrollbar bonita */
-.summary-list::-webkit-scrollbar {
-  width: 6px;
+/* Animaciones */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.summary-list::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 10px;
+/* Overlay para móvil cuando sidebar está abierto */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1500;
 }
 
-.summary-list::-webkit-scrollbar-thumb {
-  background: #bdc3c7;
-  border-radius: 10px;
+.sidebar-overlay.active {
+  display: block;
 }
 
-.summary-list::-webkit-scrollbar-thumb:hover {
-  background: #a0a6ab;
+/* Ajustes específicos para gráficos en móvil */
+@media (max-width: 768px) {
+  #movementsChart,
+  #profitsChart {
+    max-height: 300px !important;
+  }
+}
+
+/* Mejora para campos de formulario en iOS */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="date"],
+textarea,
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 8px;
+}
+
+/* Mejora de rendimiento para animaciones */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Estilo para estado vacío */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6c757d;
+}
+
+.empty-state i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+/* Colores de estado */
+.table-high-monto,
+.table-high-monto > td {
+  background-color: rgba(231, 76, 60, 0.25) !important;
+}
+
+.table-ajuste,
+.table-ajuste > td {
+  background-color: rgba(243, 156, 18, 0.08) !important;
+}
+
+.table-ajuste {
+  border-left: 8px solid var(--warning-color);
+  border-right: 8px solid var(--warning-color);
+}
+
+.table-ajuste.table-high-monto,
+.table-ajuste.table-high-monto > td {
+  background-color: rgba(241, 124, 7, 0.233) !important;
+}
+
+.table-ajuste.table-high-monto {
+  border-left: 8px solid var(--danger-color) !important;
+  border-right: 8px solid var(--danger-color) !important;
 }

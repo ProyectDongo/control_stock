@@ -151,6 +151,7 @@ class StockExitForm(forms.Form):
                     raise ValidationError("La cantidad debe ser positiva.")
             except Inventario.DoesNotExist:
                 raise ValidationError("Este producto no tiene registro en inventario.")
+        
         return cleaned_data
 
 class ProveedorForm(forms.ModelForm):
@@ -174,6 +175,8 @@ class ProveedorForm(forms.ModelForm):
         self.helper = FormHelper()
         self.helper.form_method = 'post'
         self.helper.add_input(Submit('submit', 'Guardar Proveedor', css_class='btn-primary'))
+        # Opcional: hacer que no sea requerido visualmente
+        self.fields['email'].required = False
 
     def clean(self):
         cleaned_data = super().clean()

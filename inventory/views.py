@@ -130,7 +130,51 @@ def dashboard(request):
     pedidos = Pedido.objects.all().order_by('-fecha_pedido')  # Para lista de pedidos
     reportes = Reporte.objects.all()
     usuarios = User.objects.all()
-    
+    for rep in reportes:
+        rep.lineas = []  # Lista de líneas procesadas
+        rep.total_resumen = 0  # Total solo para Resumen
+
+        for raw_line in rep.contenido.strip().split('\n'):
+            if not raw_line.strip():
+                continue
+            
+            if rep.tipo == 'Resumen':
+                # Formato esperado: "Producto: cantidad (Valor: $valor_total)"
+                try:
+                    nombre, resto = raw_line.split(':', 1)
+                    nombre = nombre.strip()
+                    
+                    # Extraer cantidad
+                    cantidad_str = resto.split('(')[0].strip()
+                    
+                    # Extraer valor total (el que está entre $ y ))
+                    valor_total_str = resto.split('$')[1].split(')')[0].strip()
+                    valor_total = int(valor_total_str.replace('.', ''))
+                    
+                    # Obtener precio unitario de venta desde el inventario
+                    inv = Inventario.objects.get(producto__nombre__icontains=nombre)
+                    precio_venta = inv.producto.precio_venta
+                    
+                    # Acumular total
+                    rep.total_resumen += valor_total
+                except Exception:
+                    # Si falla el parsing, mostramos la línea cruda
+                    nombre = raw_line.strip()
+                    cantidad_str = 'N/A'
+                    precio_venta = 0
+                    valor_total = 0
+                
+                rep.lineas.append({
+                    'nombre': nombre,
+                    'cantidad': cantidad_str,
+                    'precio_venta': precio_venta,
+                    'valor_total': valor_total
+                })
+            else:
+                # Para Ingreso/Egreso: solo el texto completo
+                rep.lineas.append({
+                    'texto': raw_line.strip()
+                })
     # Forms 
     stock_entry_form = StockEntryForm(
         request.POST if request.POST.get('form_type') == 'ingreso' else None, 
@@ -292,52 +336,58 @@ def dashboard(request):
             return redirect(reverse('dashboard') + '?panel=centro')
         
         elif form_type == 'pedido' and role in ['bodeguero', 'admin']:
-                pk = request.POST.get('pk')
-                # Detectamos si es creación o edición
-                es_nuevo = pk is None or pk == ''
-                
-                instance = get_object_or_404(Pedido, pk=pk) if pk else None
-                pedido_form = PedidoForm(request.POST, instance=instance)
-                pedido_item_formset = PedidoItemFormSet(request.POST, instance=instance)
+            pk = request.POST.get('pk')
+            es_nuevo = pk is None or pk == ''
+            
+            instance = get_object_or_404(Pedido, pk=pk) if pk else None
+            pedido_form = PedidoForm(request.POST, instance=instance)
+            pedido_item_formset = PedidoItemFormSet(request.POST, instance=instance)
 
-                if pedido_form.is_valid() and pedido_item_formset.is_valid():
-                    try:
-                        with transaction.atomic():
-                            # 1. Guardar el Pedido (Padre)
-                            pedido = pedido_form.save()
-                            
-                            # 2. Guardar los Ítems (Hijos)
-                            pedido_item_formset.instance = pedido
-                            pedido_item_formset.save()
-                            
-                          
-                            if es_nuevo and pedido.estado in ['Pendiente', 'Entransito']:
-                                for item in pedido.items.all():
-                                    # Obtener inventario
-                                    try:
-                                        inv = Inventario.objects.get(producto=item.producto)
-                                    except Inventario.DoesNotExist:
-                                        raise ValidationError(f"El producto {item.producto.nombre} no tiene inventario creado.")
+            if pedido_form.is_valid() and pedido_item_formset.is_valid():
+                try:
+                    with transaction.atomic():
+                        pedido = pedido_form.save()
+                        
+                        # Guardar ítems
+                        pedido_item_formset.instance = pedido
+                        items = pedido_item_formset.save(commit=False)
 
-                                    # Validar stock disponible
-                                    disponible = inv.cantidad - inv.stock_reservado
-                                    if disponible < item.cantidad:
-                                        raise ValidationError(f"Stock insuficiente para {item.producto.nombre}. Disponible: {disponible}, Solicitado: {item.cantidad}")
-                                    
-                                    # Reservar
-                                    inv.stock_reservado += item.cantidad
-                                    inv.save()
+                        # Filtrar ítems válidos (con producto y cantidad > 0)
+                        items_validos = []
+                        for item in items:
+                            if item.producto and item.cantidad and item.cantidad > 0:
+                                items_validos.append(item)
+                            elif not item.pk:  # Si es nuevo y está vacío, eliminarlo
+                                pass
+                            else:  # Si existe y se dejó vacío, eliminarlo
+                                item.delete()
 
-                        messages.success(request, 'Pedido guardado exitosamente.')
-                        return redirect(reverse('dashboard') + '?panel=concepto-egreso')
-                    
-                    except ValidationError as e:
-                        # Capturamos el error de validación manual y deshacemos todo (gracias a transaction.atomic)
-                        messages.error(request, f'Error de validación: {e.message if hasattr(e, "message") else str(e)}')
-                        active_panel = 'concepto-egreso'
-                else:
-                    messages.error(request, 'Error en el formulario. Revisa los campos.')
-                    active_panel = 'concepto-egreso'  
+                        if not items_validos:
+                            raise ValidationError("Debe agregar al menos un producto con cantidad mayor a 0.")
+
+                        # Guardar los válidos
+                        for item in items_validos:
+                            item.save()
+
+                        
+                        if es_nuevo and pedido.estado in ['Pendiente', 'Entransito']:
+                            for item in pedido.items.all():
+                                inv = Inventario.objects.get_or_create(producto=item.producto)[0]
+                                disponible = inv.cantidad - inv.stock_reservado
+                                if disponible < item.cantidad:
+                                    raise ValidationError(f"Stock insuficiente para {item.producto.nombre}.")
+                                inv.stock_reservado += item.cantidad
+                                inv.save()
+
+                    messages.success(request, 'Pedido guardado exitosamente.')
+                    return redirect(reverse('dashboard') + '?panel=concepto-egreso')
+
+                except ValidationError as e:
+                    messages.error(request, f'Error: {e.message if hasattr(e, "message") else str(e)}')
+                    active_panel = 'concepto-egreso'
+            else:
+                messages.error(request, 'Error en el formulario. Revisa los campos.')
+                active_panel = 'concepto-egreso'
             
         
         elif form_type == 'delete_pedido' and role in ['bodeguero', 'admin']:
@@ -371,13 +421,39 @@ def dashboard(request):
                 inventarios_list = Inventario.objects.all()
                 content = "\n".join([f"{inv.producto.nombre}: {inv.cantidad} (Valor: {inv.cantidad * inv.producto.precio_venta})" for inv in inventarios_list])
             if content:
+                 # Parsear las líneas para facilitar el uso en template
+                lineas = []
+                for raw_line in content.strip().split('\n'):
+                    if raw_line.strip():
+                        if tipo == 'Resumen':
+                            # Ejemplo: "Producto: 10 (Valor: $50000)"
+                            # Extraemos: nombre, cantidad, valor_venta, valor_total
+                            try:
+                                nombre = raw_line.split(':')[0].strip()
+                                resto = raw_line.split(':')[1].strip()
+                                cantidad = resto.split('(')[0].strip()
+                                valor_total_str = resto.split('$')[1].split(')')[0].strip()
+                                valor_total = int(valor_total_str.replace('.', ''))
+                                # Buscamos el producto para obtener precio_venta
+                                inv = Inventario.objects.get(producto__nombre=nombre)
+                                valor_unitario_venta = inv.producto.precio_venta
+                            except:
+                                nombre = raw_line
+                                cantidad = 'N/A'
+                                valor_unitario_venta = 0
+                                valor_total = 0
+                            lineas.append({
+                                'nombre': nombre,
+                                'cantidad': cantidad,
+                                'valor_unitario_venta': valor_unitario_venta,
+                                'valor_total': valor_total,
+                            })
+                        else:
+                            # Ingreso/Egreso: solo la línea completa
+                            lineas.append({'texto': raw_line.strip()})
+
                 Reporte.objects.create(tipo=tipo, contenido=content)
                 messages.success(request, f'Reporte de {tipo} generado.')
-            else:
-                messages.error(request, 'Tipo de reporte inválido o no hay datos.')
-                redirect_panel = 'reporte'  
-                
-            redirect_panel = 'rcv'
         
         elif form_type == 'usuario' and role == 'admin':
             if user_form.is_valid():

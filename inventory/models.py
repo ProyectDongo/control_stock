@@ -98,7 +98,16 @@ class Transaction(models.Model):
 class Proveedor(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     contacto = models.CharField(max_length=100)
-    email = models.EmailField(unique=True)
+    email = models.EmailField(
+        max_length=254,          
+        unique=True,
+        blank=True,              
+        null=True,               
+        error_messages={
+            'invalid': 'Por favor ingresa un correo electrónico válido.',
+            'unique': 'Ya existe un proveedor con este correo.'
+        }
+    )
     telefono = models.CharField(
         max_length=20,
         validators=[RegexValidator(r'^\+?\d{1,3}?[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}$', 'Formato inválido.')]
@@ -191,7 +200,7 @@ def post_save_pedido(sender, instance, created, **kwargs):
 
 class PedidoItem(models.Model):
     pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='items')
-    producto = models.ForeignKey(Producto, on_delete=models.CASCADE)
+    producto = models.ForeignKey(Producto, on_delete=models.CASCADE ,null=False)
     cantidad = models.PositiveIntegerField(validators=[MinValueValidator(1)])
 
     def __str__(self):

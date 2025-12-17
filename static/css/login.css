@@ -1,0 +1,494 @@
+    :root {
+            --primary-ocean: #0a4a7a;
+            --secondary-sea: #0d7a8c;
+            --accent-algae: #1a936f;
+            --warehouse-accent: #e67e22;
+            --light-sea: #88d3ce;
+            --sand-beach: #f0e6d3;
+            --text-light: #ffffff;
+            --text-dark: #2c3e50;
+            --gradient-ocean: linear-gradient(135deg, #0a4a7a 0%, #0d7a8c 50%, #1a936f 100%);
+            --gradient-sea: linear-gradient(135deg, #0d7a8c 0%, #1a936f 100%);
+            --gradient-warehouse: linear-gradient(135deg, #0d7a8c 0%, #1a936f 50%, #e67e22 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f5f9fc;
+            background-image: 
+                radial-gradient(#0d7a8c11 1px, transparent 1px),
+                linear-gradient(90deg, transparent 98%, #e67e2211 98%),
+                linear-gradient(0deg, transparent 98%, #e67e2211 98%);
+            background-size: 20px 20px, 40px 40px, 40px 40px;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Fondo con elementos de almacén y marinos */
+        .warehouse-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            overflow: hidden;
+            opacity: 0.7;
+        }
+
+        .grid-line {
+            position: absolute;
+            background: rgba(13, 122, 140, 0.05);
+        }
+
+        .grid-line.horizontal {
+            width: 100%;
+            height: 1px;
+        }
+
+        .grid-line.vertical {
+            width: 1px;
+            height: 100%;
+        }
+
+        /* Contenedor principal */
+        .login-container {
+            display: flex;
+            width: 100%;
+            max-width: 1200px;
+            min-height: 700px;
+            border-radius: 25px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(10, 74, 122, 0.25);
+            background-color: white;
+            transition: all 0.3s ease;
+            position: relative;
+            z-index: 1;
+        }
+
+        .login-container:hover {
+            box-shadow: 0 25px 80px rgba(10, 74, 122, 0.35);
+        }
+
+        /* Panel izquierdo - Información del almacén */
+        .warehouse-info {
+            flex: 1;
+            background: var(--gradient-ocean);
+            color: var(--text-light);
+            padding: 50px 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .warehouse-info::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect x="10" y="10" width="30" height="30" fill="%231a936f22" stroke="%231a936f33" stroke-width="1"/><rect x="60" y="10" width="30" height="30" fill="%231a936f22" stroke="%231a936f33" stroke-width="1"/><rect x="10" y="60" width="30" height="30" fill="%231a936f22" stroke="%231a936f33" stroke-width="1"/><rect x="60" y="60" width="30" height="30" fill="%231a936f22" stroke="%231a936f33" stroke-width="1"/></svg>');
+            background-size: 150px;
+            opacity: 0.1;
+        }
+
+        .warehouse-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .warehouse-icon {
+            font-size: 2.8rem;
+            margin-right: 15px;
+            color: var(--light-sea);
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 12px;
+        }
+
+        .warehouse-header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .warehouse-stats {
+            display: flex;
+            justify-content: space-between;
+            margin: 25px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(5px);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--light-sea);
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        .warehouse-description {
+            margin-top: 20px;
+        }
+
+        .warehouse-description h3 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+
+        .warehouse-description h3 i {
+            margin-right: 10px;
+        }
+
+        .warehouse-description p {
+            line-height: 1.7;
+            margin-bottom: 20px;
+            font-size: 1.05rem;
+            opacity: 0.9;
+        }
+
+        .products-list {
+            list-style: none;
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .products-list li {
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        .products-list li i {
+            margin-right: 10px;
+            color: var(--light-sea);
+        }
+
+        /* Panel derecho - Formulario de login */
+        .login-form-container {
+            flex: 1;
+            padding: 60px 50px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            background-color: white;
+            position: relative;
+        }
+
+        .login-form-container::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: var(--gradient-warehouse);
+            clip-path: polygon(100% 0, 0 0, 100% 100%);
+            opacity: 0.9;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .login-header i {
+            font-size: 3.2rem;
+            margin-bottom: 20px;
+            color: var(--warehouse-accent);
+            background: linear-gradient(135deg, var(--accent-algae), var(--warehouse-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .login-header h2 {
+            color: var(--text-dark);
+            font-weight: 700;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+
+        .login-header p {
+            color: #7f8c8d;
+            font-size: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        .form-label {
+            color: var(--primary-ocean);
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .form-label i {
+            margin-right: 10px;
+            width: 20px;
+        }
+
+        .form-control {
+            border: 2px solid #e1e8ed;
+            border-radius: 12px;
+            padding: 16px 20px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background-color: #f9fbfd;
+        }
+
+        .form-control:focus {
+            border-color: var(--warehouse-accent);
+            background-color: white;
+            box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .input-icon {
+            position: absolute;
+            right: 20px;
+            top: 50px;
+            color: #bdc3c7;
+            font-size: 1.1rem;
+        }
+
+        .btn-login {
+            background: var(--gradient-warehouse);
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: white;
+            width: 100%;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            box-shadow: 0 4px 15px rgba(13, 122, 140, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(13, 122, 140, 0.4);
+        }
+
+        .btn-login:active {
+            transform: translateY(-1px);
+        }
+
+        .btn-login::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.7s ease;
+        }
+
+        .btn-login:hover::after {
+            left: 100%;
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 35px;
+            padding-top: 25px;
+            border-top: 1px solid #ecf0f1;
+        }
+
+        .login-footer p {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .login-footer a {
+            color: var(--warehouse-accent);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .login-footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Elementos flotantes de almacén */
+        .warehouse-element {
+            position: absolute;
+            z-index: 1;
+            opacity: 0.7;
+            font-size: 2rem;
+            color: var(--warehouse-accent);
+        }
+
+        .pallet-1 {
+            top: 15%;
+            left: 10%;
+            animation: float 8s ease-in-out infinite;
+        }
+
+        .pallet-2 {
+            bottom: 20%;
+            right: 15%;
+            animation: float 10s ease-in-out infinite;
+            animation-delay: 1s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(5deg); }
+        }
+
+        /* Indicador de almacén */
+        .storage-indicator {
+            position: absolute;
+            bottom: 30px;
+            left: 40px;
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+
+        .storage-indicator i {
+            font-size: 1.5rem;
+            margin-right: 10px;
+            color: var(--light-sea);
+        }
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .login-container {
+                flex-direction: column;
+                max-width: 700px;
+            }
+            
+            .warehouse-info {
+                padding: 40px 30px;
+                order: 2;
+            }
+            
+            .login-form-container {
+                padding: 50px 40px;
+                order: 1;
+            }
+            
+            .warehouse-header h1 {
+                font-size: 1.6rem;
+            }
+            
+            .login-header h2 {
+                font-size: 1.8rem;
+            }
+            
+            .products-list {
+                grid-template-columns: 1fr;
+            }
+            
+            .storage-indicator {
+                position: relative;
+                bottom: auto;
+                left: auto;
+                margin-top: 20px;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .login-container {
+                border-radius: 20px;
+            }
+            
+            .warehouse-info, .login-form-container {
+                padding: 35px 25px;
+            }
+            
+            .warehouse-header h1 {
+                font-size: 1.4rem;
+            }
+            
+            .login-header h2 {
+                font-size: 1.6rem;
+            }
+            
+            .form-control {
+                padding: 14px 16px;
+            }
+            
+            .warehouse-stats {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+
+        /* Efectos de inventario */
+        .inventory-particle {
+            position: absolute;
+            border-radius: 4px;
+            background: rgba(26, 147, 111, 0.1);
+            animation: inventory-float 15s infinite linear;
+            z-index: -1;
+        }
+
+        @keyframes inventory-float {
+            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.5; }
+            90% { opacity: 0.5; }
+            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+        }
+
+        /* Scanner effect */
+        .scanner-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--warehouse-accent), transparent);
+            opacity: 0;
+            z-index: 2;
+        }

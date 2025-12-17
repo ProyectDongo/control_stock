@@ -1,0 +1,116 @@
+
+{% load static %}
+{% load humanize %}
+
+<div class="report-document">
+    <!-- Header -->
+    <div class="report-header mb-4">
+        <div class="company-info mb-3">
+            <h4 class="text-dark mb-1">{{ empresa.nombre }}</h4>
+            <p class="mb-0"><strong>RUT:</strong> {{ empresa.rut }}</p>
+            <p class="mb-0"><strong>Dirección:</strong> {{ empresa.direccion }}</p>
+            <p class="mb-0"><strong>Teléfono:</strong> {{ empresa.telefono }}</p>
+        </div>
+        
+        <div class="report-title-section text-center mb-3">
+            <h1 class="report-title fw-bold mb-1">
+                {% if reporte.tipo == 'Ingreso' %}
+                Reporte de Ingresos
+                {% elif reporte.tipo == 'Egreso' %}
+                Reporte de Egresos
+                {% else %}
+                Resumen de Inventario
+                {% endif %}
+            </h1>
+            <p class="text-muted mb-0">Generado el: {{ reporte.fecha|date:"d/m/Y \a \l\a\s H:i" }}</p>
+        </div>
+        
+        <hr class="my-3">
+    </div>
+
+    <!-- Contenido - Siempre en tabla -->
+    <div class="report-body">
+        <div class="table-responsive">
+            <table class="table table-bordered mb-0">
+                {% if reporte.tipo == 'Resumen' %}
+                <!-- Encabezados para Resumen -->
+                <thead>
+                    <tr class="table-secondary">
+                        <th class="p-2" style="width: 35%">Producto</th>
+                        <th class="text-center p-2" style="width: 15%">Cantidad</th>
+                        <th class="text-end p-2" style="width: 25%">Precio Unitario</th>
+                        <th class="text-end p-2" style="width: 25%">Valor Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linea in reporte.lineas %}
+                    <tr>
+                        <td class="p-2">{{ linea.nombre }}</td>
+                        <td class="text-center p-2">{{ linea.cantidad }}</td>
+                        <td class="text-end p-2">${{ linea.precio_venta|intcomma }}</td>
+                        <td class="text-end p-2 fw-bold">${{ linea.valor_total|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-primary">
+                        <th colspan="3" class="text-end p-2">TOTAL INVENTARIO:</th>
+                        <th class="text-end p-2 fw-bold">
+                            ${{ reporte.total_resumen|intcomma }}
+                        </th>
+                    </tr>
+                </tfoot>
+                
+                {% else %}
+                <!-- Encabezados para Ingreso/Egreso -->
+                <thead>
+                    <tr class="table-secondary">
+                        <th class="p-2" style="width: 40%">Producto</th>
+                        <th class="text-center p-2" style="width: 15%">Cantidad</th>
+                        <th class="text-center p-2" style="width: 25%">Fecha</th>
+                        <th class="text-center p-2" style="width: 20%">Hora</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linea in reporte.lineas %}
+                    <tr>
+                        <td class="p-2">
+                            {% if reporte.tipo == 'Ingreso' %}
+                            <span class="text-success">+ {{ linea.nombre }}</span>
+                            {% else %}
+                            <span class="text-danger">- {{ linea.nombre }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center p-2">
+                            {% if reporte.tipo == 'Ingreso' %}
+                            <span class="badge bg-success">+{{ linea.cantidad }}</span>
+                            {% else %}
+                            <span class="badge bg-danger">-{{ linea.cantidad }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center p-2">{{ linea.fecha|date:"d/m/Y" }}</td>
+                        <td class="text-center p-2">{{ linea.fecha|date:"H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-primary">
+                        <th colspan="3" class="text-end p-2">TOTAL MOVIMIENTOS:</th>
+                        <th class="text-center p-2 fw-bold">
+                            {{ reporte.lineas|length }}
+                        </th>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+
+    <div class="report-footer text-center mt-4 text-muted small">
+        <p class="mb-0">Reporte generado por el Sistema de Gestión de Stock</p>
+    </div>
+</div>
+
+<style>
+    
+</style>
