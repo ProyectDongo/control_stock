@@ -227,6 +227,41 @@
                     </tbody>
                   </table>
                 </div>
+
+                <!-- Paginación de movimientos -->
+                {% if ultimos_movimientos.has_other_pages %}
+                <div class="card-footer bg-light">
+                  <nav aria-label="Paginación movimientos">
+                    <ul class="pagination pagination-sm justify-content-center mb-0">
+                      {% if ultimos_movimientos.has_previous %}
+                        <li class="page-item">
+                          <a class="page-link" href="?panel=dashboard&page_mov={{ ultimos_movimientos.previous_page_number }}{% if page_inv %}&page_inv={{ page_inv }}{% endif %}">Anterior</a>
+                        </li>
+                      {% else %}
+                        <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+                      {% endif %}
+
+                      {% for num in ultimos_movimientos.paginator.page_range %}
+                        {% if ultimos_movimientos.number == num %}
+                          <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                        {% else %}
+                          <li class="page-item">
+                            <a class="page-link" href="?panel=dashboard&page_mov={{ num }}{% if page_inv %}&page_inv={{ page_inv }}{% endif %}">{{ num }}</a>
+                          </li>
+                        {% endif %}
+                      {% endfor %}
+
+                      {% if ultimos_movimientos.has_next %}
+                        <li class="page-item">
+                          <a class="page-link" href="?panel=dashboard&page_mov={{ ultimos_movimientos.next_page_number }}{% if page_inv %}&page_inv={{ page_inv }}{% endif %}">Siguiente</a>
+                        </li>
+                      {% else %}
+                        <li class="page-item disabled"><span class="page-link">Siguiente</span></li>
+                      {% endif %}
+                    </ul>
+                  </nav>
+                </div>
+                {% endif %}
               </div>
             </div>
 
@@ -257,11 +292,45 @@
                       <td>${{ inv.val|intcomma }}</td>
                       <td class="text-success fw-bold">${{ inv.ganancia_estimada|intcomma }}</td>
                     </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-center py-4 text-muted">No hay productos en inventario</td></tr>
                     {% endfor %}
                   </tbody>
                 </table>
               </div>
             </div>
+            <!-- Paginación de inventario -->
+            {% if inventarios.has_other_pages %}
+            <nav aria-label="Paginación inventario" class="mt-3">
+              <ul class="pagination justify-content-center">
+                {% if inventarios.has_previous %}
+                  <li class="page-item">
+                    <a class="page-link" href="?panel=dashboard&page_inv={{ inventarios.previous_page_number }}{% if page_mov %}&page_mov={{ page_mov }}{% endif %}">Anterior</a>
+                  </li>
+                {% else %}
+                  <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+                {% endif %}
+
+                {% for num in inventarios.paginator.page_range %}
+                  {% if inventarios.number == num %}
+                    <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                  {% else %}
+                    <li class="page-item">
+                      <a class="page-link" href="?panel=dashboard&page_inv={{ num }}{% if page_mov %}&page_mov={{ page_mov }}{% endif %}">{{ num }}</a>
+                    </li>
+                  {% endif %}
+                {% endfor %}
+
+                {% if inventarios.has_next %}
+                  <li class="page-item">
+                    <a class="page-link" href="?panel=dashboard&page_inv={{ inventarios.next_page_number }}{% if page_mov %}&page_mov={{ page_mov }}{% endif %}">Siguiente</a>
+                  </li>
+                {% else %}
+                  <li class="page-item disabled"><span class="page-link">Siguiente</span></li>
+                {% endif %}
+              </ul>
+            </nav>
+            {% endif %}
           </div>
 
           <!-- DERECHA: RESUMEN RÁPIDO -->

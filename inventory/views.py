@@ -16,6 +16,7 @@ from io import BytesIO
 import base64
 from datetime import datetime, timedelta  
 from django.utils import timezone
+from django.core.paginator import Paginator
 
 @login_required
 def dashboard(request):
@@ -46,6 +47,25 @@ def dashboard(request):
     total_reservado = Inventario.objects.aggregate(total=Sum('stock_reservado'))['total'] or 0
     total_disponible = total_inventario - total_reservado
     total_valor = Inventario.objects.annotate(val=F('cantidad') * F('producto__precio_unitario')).aggregate(sum_val=Sum('val'))['sum_val'] or 0
+    movimientos_qs = Transaction.objects.select_related('inventario__producto').order_by('-fecha')
+
+    for t in movimientos_qs:
+        t.costo_total = t.cantidad * t.inventario.producto.precio_unitario
+        t.venta_total = t.cantidad * t.inventario.producto.precio_venta
+        if t.tipo == 'ingreso':
+            t.valor_display = t.costo_total
+        else:
+            t.valor_display = -(t.venta_total - t.costo_total)
+
+    # Paginación de movimientos (10 por página)
+    paginator_mov = Paginator(movimientos_qs, 10)
+    page_mov = request.GET.get('page_mov', 1)
+    ultimos_movimientos = paginator_mov.get_page(page_mov)
+
+    # Inventario - PAGINACIÓN
+    paginator_inv = Paginator(inventarios, 10)
+    page_inv = request.GET.get('page_inv', 1)
+    inventarios_paginados = paginator_inv.get_page(page_inv)
     
     # Inventarios con valor y ganancia estimada (asumiendo margen del 20%)
     inventarios = inventarios.annotate(
@@ -75,14 +95,7 @@ def dashboard(request):
     ganancia_real = ventas_realizadas - costo_vendido
 
     # Últimos movimientos con valores
-    ultimos_movimientos = Transaction.objects.select_related('inventario__producto').order_by('-fecha')[:20]
-    for t in ultimos_movimientos:
-        t.costo_total = t.cantidad * t.inventario.producto.precio_unitario
-        t.venta_total = t.cantidad * t.inventario.producto.precio_venta
-        if t.tipo == 'ingreso':
-            t.valor_display = t.costo_total
-        else:
-            t.valor_display = -(t.venta_total - t.costo_total)
+    
 
     # Pedidos vencidos
     hoy = timezone.now().date()
@@ -472,7 +485,8 @@ def dashboard(request):
         
         
     context = {
-        
+        'ultimos_movimientos': ultimos_movimientos,
+        'inventarios': inventarios_paginados,
         'empresa': empresa,
         'stock_exit_form': stock_exit_form,
         'vigencia_plan': vigencia_plan,
@@ -501,7 +515,8 @@ def dashboard(request):
         'role': role,  
         'ganancia_real': int(ganancia_real or 0),
         'ganancia_estimada_total': int(ganancia_estimada_total or 0),
-        'ultimos_movimientos': ultimos_movimientos,
+        
+        
     }
     return render(request, 'dashboard.html', context)
 
