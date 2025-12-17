@@ -496,7 +496,6 @@ def dashboard(request):
         'total_reservado': total_reservado,
         'total_disponible': total_disponible,
         'total_valor': total_valor,
-        'inventarios': inventarios,
         'pedidos_vencidos': pedidos_vencidos,
         'stock_data': stock_data,
         'profits_data': profits_data,
@@ -555,7 +554,7 @@ def user_logout(request):
     messages.success(request, 'Sesión cerrada.')
     return redirect('login')
 
-
+from django.db.models import F, Case, When, Value
 @login_required
 def completar_pedido_qr(request):
     if request.method == 'POST':
@@ -584,12 +583,11 @@ def completar_pedido_qr(request):
 
                     # Descontar stock físico
                     inv.cantidad -= cantidad_necesaria
-                    # Liberar reserva (si estaba reservado al crear pedido)
-                    if inv.stock_reservado >= cantidad_necesaria:
-                        inv.stock_reservado -= cantidad_necesaria
-                    else:
-                        inv.stock_reservado = 0
-                    inv.save()
+                    inv.stock_reservado = Case(
+                        When(stock_reservado__gte=cantidad_necesaria, then=F('stock_reservado') - cantidad_necesaria),
+                        default=Value(0)
+                    )
+                    inv.save(update_fields=['stock_reservado'])
 
                     # Registrar movimiento
                     Transaction.objects.create(
