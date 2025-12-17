@@ -351,7 +351,7 @@ def dashboard(request):
         elif form_type == 'pedido' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             es_nuevo = pk is None or pk == ''
-            
+
             instance = get_object_or_404(Pedido, pk=pk) if pk else None
             pedido_form = PedidoForm(request.POST, instance=instance)
             pedido_item_formset = PedidoItemFormSet(request.POST, instance=instance)
@@ -360,52 +360,39 @@ def dashboard(request):
                 try:
                     with transaction.atomic():
                         pedido = pedido_form.save()
-                        
-                        # Guardar ítems
-                        pedido_item_formset.instance = pedido
-                        items = pedido_item_formset.save(commit=False)
 
-                        # Filtrar ítems válidos (con producto y cantidad > 0)
-                       # Guardar todos los ítems del formset (incluidos los existentes)
+                        # Guardar ítems del formset
                         instances = pedido_item_formset.save(commit=False)
 
                         # Eliminar los marcados para borrar
                         for obj in pedido_item_formset.deleted_objects:
                             obj.delete()
 
-                        # Validar y guardar los ítems modificados/nuevos
-                        items_validos = False
+                        # Guardar los nuevos/modificados
+                        has_valid_item = False
                         for item in instances:
                             if item.producto and item.cantidad > 0:
+                                item.pedido = pedido
                                 item.save()
-                                items_validos = True
-                            elif item.pk:  # Si existe pero está vacío, lo borramos
+                                has_valid_item = True
+                            elif item.pk:  # Si existe pero está vacío, borrarlo
                                 item.delete()
-                            # Si es nuevo y vacío, simplemente no lo guardamos
 
-                        # Si es pedido nuevo, exigimos al menos un ítem
-                        if es_nuevo and not items_validos:
+                        # Solo exigimos ítems si es pedido nuevo
+                        if es_nuevo and not has_valid_item and not pedido.items.exists():
                             raise ValidationError("Debe agregar al menos un producto con cantidad mayor a 0.")
 
-                        # Guardar los válidos
-                        for item in items_validos:
-                            item.save()
-
-                        
-                        if es_nuevo and pedido.estado in ['Pendiente', 'Entransito']:
-                            for item in pedido.items.all():
-                                inv = Inventario.objects.get_or_create(producto=item.producto)[0]
-                                disponible = inv.cantidad - inv.stock_reservado
-                                if disponible < item.cantidad:
-                                    raise ValidationError(f"Stock insuficiente para {item.producto.nombre}.")
-                                inv.stock_reservado += item.cantidad
-                                inv.save()
+                        # Reservar stock solo si es nuevo y estado reserva
+                        reserving_states = ['Pendiente', 'Entransito']
+                        if es_nuevo and pedido.estado in reserving_states:
+                            # El signal pre_save ya se encargó de esto
+                            pass
 
                     messages.success(request, 'Pedido guardado exitosamente.')
                     return redirect(reverse('dashboard') + '?panel=concepto-egreso')
 
                 except ValidationError as e:
-                    messages.error(request, f'Error: {e.message if hasattr(e, "message") else str(e)}')
+                    messages.error(request, f'Error: {str(e)}')
                     active_panel = 'concepto-egreso'
             else:
                 messages.error(request, 'Error en el formulario. Revisa los campos.')
