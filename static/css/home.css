@@ -564,7 +564,9 @@ body {
   align-items: start;
 }
 
-
+.dashboard-main {
+  min-width: 0;
+}
 
 .dashboard-sidebar-right {
   height: 100%;

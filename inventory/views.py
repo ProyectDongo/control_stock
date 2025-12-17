@@ -366,16 +366,25 @@ def dashboard(request):
                         items = pedido_item_formset.save(commit=False)
 
                         # Filtrar ítems válidos (con producto y cantidad > 0)
-                        items_validos = []
-                        for item in items:
-                            if item.producto and item.cantidad and item.cantidad > 0:
-                                items_validos.append(item)
-                            elif not item.pk:  # Si es nuevo y está vacío, eliminarlo
-                                pass
-                            else:  # Si existe y se dejó vacío, eliminarlo
-                                item.delete()
+                       # Guardar todos los ítems del formset (incluidos los existentes)
+                        instances = pedido_item_formset.save(commit=False)
 
-                        if not items_validos:
+                        # Eliminar los marcados para borrar
+                        for obj in pedido_item_formset.deleted_objects:
+                            obj.delete()
+
+                        # Validar y guardar los ítems modificados/nuevos
+                        items_validos = False
+                        for item in instances:
+                            if item.producto and item.cantidad > 0:
+                                item.save()
+                                items_validos = True
+                            elif item.pk:  # Si existe pero está vacío, lo borramos
+                                item.delete()
+                            # Si es nuevo y vacío, simplemente no lo guardamos
+
+                        # Si es pedido nuevo, exigimos al menos un ítem
+                        if es_nuevo and not items_validos:
                             raise ValidationError("Debe agregar al menos un producto con cantidad mayor a 0.")
 
                         # Guardar los válidos
@@ -563,52 +572,28 @@ def completar_pedido_qr(request):
             return JsonResponse({'success': False, 'message': 'ID de pedido no proporcionado.'}, status=400)
 
         try:
-            pedido = get_object_or_404(Pedido, id=pedido_id)
-
-            if pedido.estado == 'Completado':
-                return JsonResponse({'success': False, 'message': 'Este pedido ya fue completado anteriormente.'})
-
             with transaction.atomic():
-                for item in pedido.items.all():
-                    cantidad_necesaria = item.cantidad
+                pedido = get_object_or_404(Pedido, id=pedido_id)
 
-                    inv = get_object_or_404(Inventario, producto=item.producto)
+                if pedido.estado == 'Completado':
+                    return JsonResponse({'success': False, 'message': 'Este pedido ya fue completado anteriormente.'})
 
-                    if inv.cantidad < cantidad_necesaria:
-                        return JsonResponse({
-                            'success': False,
-                            'message': f'Stock insuficiente para {item.producto.nombre}. Disponible: {inv.cantidad}'
-                        })
-
-                    # Actualizamos con update() para evitar contaminar el objeto
-                    Inventario.objects.filter(pk=inv.pk).update(
-                        cantidad=F('cantidad') - cantidad_necesaria,
-                        stock_reservado=Case(
-                            When(stock_reservado__gte=cantidad_necesaria, then=F('stock_reservado') - cantidad_necesaria),
-                            default=Value(0)
-                        )
-                    )
-
-                    # Registrar movimiento (inv se recarga si es necesario, pero no lo necesitamos aquí)
-                    Transaction.objects.create(
-                        inventario=inv,
-                        tipo='egreso',
-                        cantidad=cantidad_necesaria,
-                        descripcion=f"Egreso por completado de Pedido #{pedido.id}"
-                    )
-
+                # Solo cambiamos el estado → el signal post_save hará todo el trabajo
                 pedido.estado = 'Completado'
                 pedido.save()
 
             return JsonResponse({
                 'success': True,
-                'message': f'Pedido #{pedido.id} completado exitosamente. Stock actualizado.'
+                'message': f'Pedido #{pedido_id} completado exitosamente. Stock actualizado.'
             })
 
+        except ValidationError as e:
+            return JsonResponse({'success': False, 'message': str(e)})
         except Exception as e:
-            return JsonResponse({'success': False, 'message': str(e)}, status=500)
+            return JsonResponse({'success': False, 'message': 'Error inesperado al completar el pedido.'}, status=500)
 
     return JsonResponse({'success': False, 'message': 'Método no permitido.'}, status=405)
+
 def pedido_qr_publico(request, pk):
     """
     Vista pública: Muestra el detalle del pedido con QR grande.
