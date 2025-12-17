@@ -141,7 +141,6 @@ class Pedido(models.Model):
     def clean(self):
         if self.fecha_vencimiento and self.fecha_vencimiento < timezone.now().date():
             raise ValidationError("Fecha vencimiento no puede ser pasada.")
-
 @receiver(pre_save, sender=Pedido)
 def pre_save_pedido(sender, instance, **kwargs):
     if not instance.pk:  # Es nuevo pedido
@@ -158,14 +157,12 @@ def pre_save_pedido(sender, instance, **kwargs):
     if old_instance.estado in reserving_states and instance.estado not in reserving_states:
         for item in old_instance.items.all():
             try:
-                inv = Inventario.objects.get(producto=item.producto)
-                # Usamos expresión F para evitar race conditions y proteger contra negativos
-                from django.db.models import F, Case, When, Value
-                inv.stock_reservado = Case(
-                    When(stock_reservado__gte=item.cantidad, then=F('stock_reservado') - item.cantidad),
-                    default=Value(0)
+                Inventario.objects.filter(producto=item.producto).update(
+                    stock_reservado=Case(
+                        When(stock_reservado__gte=item.cantidad, then=F('stock_reservado') - item.cantidad),
+                        default=Value(0)
+                    )
                 )
-                inv.save(update_fields=['stock_reservado'])
             except Inventario.DoesNotExist:
                 continue
 
@@ -180,39 +177,53 @@ def pre_save_pedido(sender, instance, **kwargs):
                         f"No hay suficiente stock disponible para {item.producto.nombre}. "
                         f"Disponible: {disponible}, solicitado: {item.cantidad}."
                     )
-                inv.stock_reservado += item.cantidad
-                inv.save()
+                Inventario.objects.filter(pk=inv.pk).update(
+                    stock_reservado=F('stock_reservado') + item.cantidad
+                )
             except Inventario.DoesNotExist:
                 raise ValidationError(f"El producto {item.producto.nombre} no tiene registro en inventario.")
+            
             
 @receiver(pre_delete, sender=Pedido)
 def liberar_reserva_al_eliminar(sender, instance, **kwargs):
     if instance.estado in ['Pendiente', 'Entransito']:
         for item in instance.items.all():
             try:
-                inv = Inventario.objects.get(producto=item.producto)
-                from django.db.models import F, Case, When, Value
-                inv.stock_reservado = Case(
-                    When(stock_reservado__gte=item.cantidad, then=F('stock_reservado') - item.cantidad),
-                    default=Value(0)
+                Inventario.objects.filter(producto=item.producto).update(
+                    stock_reservado=Case(
+                        When(stock_reservado__gte=item.cantidad, then=F('stock_reservado') - item.cantidad),
+                        default=Value(0)
+                    )
                 )
-                inv.save(update_fields=['stock_reservado'])
             except Inventario.DoesNotExist:
                 pass
 @receiver(post_save, sender=Pedido)
 def post_save_pedido(sender, instance, created, **kwargs):
     if not created and instance.estado == 'Completado':
         for item in instance.items.all():
-            inv = Inventario.objects.get(producto=item.producto)
-            if inv.cantidad >= item.cantidad:
-                inv.cantidad -= item.cantidad
-                inv.stock_reservado = Case(
-                    When(stock_reservado__gte=item.cantidad, then=F('stock_reservado') - item.cantidad),
-                    default=Value(0)
+            try:
+                inv = Inventario.objects.get(producto=item.producto)
+                if inv.cantidad < item.cantidad:
+                    raise ValidationError(f"No hay suficiente stock para completar el ítem {item.producto.nombre} en Pedido {instance.id}.")
+
+                # Actualizamos cantidad y liberamos reserva de forma segura
+                Inventario.objects.filter(pk=inv.pk).update(
+                    cantidad=F('cantidad') - item.cantidad,
+                    stock_reservado=Case(
+                        When(stock_reservado__gte=item.cantidad, then=F('stock_reservado') - item.cantidad),
+                        default=Value(0)
+                    )
                 )
-                inv.save(update_fields=['stock_reservado'])
-            else:
-                raise ValidationError(f"No hay suficiente stock para completar el ítem {item.producto.nombre} en Pedido {instance.id}.")
+
+                # Registrar movimiento
+                Transaction.objects.create(
+                    inventario=inv,
+                    tipo='egreso',
+                    cantidad=item.cantidad,
+                    descripcion=f"Egreso por Pedido {instance.id}"
+                )
+            except Inventario.DoesNotExist:
+                pass
 
     if created:
         send_mail(

@@ -570,8 +570,7 @@ def completar_pedido_qr(request):
 
             with transaction.atomic():
                 for item in pedido.items.all():
-                    # Asumiendo que PedidoItem tiene campo 'cantidad' en unidades base
-                    cantidad_necesaria = item.cantidad  # Ajusta si hay factor_conversion
+                    cantidad_necesaria = item.cantidad
 
                     inv = get_object_or_404(Inventario, producto=item.producto)
 
@@ -581,15 +580,16 @@ def completar_pedido_qr(request):
                             'message': f'Stock insuficiente para {item.producto.nombre}. Disponible: {inv.cantidad}'
                         })
 
-                    # Descontar stock físico
-                    inv.cantidad -= cantidad_necesaria
-                    inv.stock_reservado = Case(
-                        When(stock_reservado__gte=cantidad_necesaria, then=F('stock_reservado') - cantidad_necesaria),
-                        default=Value(0)
+                    # Actualizamos con update() para evitar contaminar el objeto
+                    Inventario.objects.filter(pk=inv.pk).update(
+                        cantidad=F('cantidad') - cantidad_necesaria,
+                        stock_reservado=Case(
+                            When(stock_reservado__gte=cantidad_necesaria, then=F('stock_reservado') - cantidad_necesaria),
+                            default=Value(0)
+                        )
                     )
-                    inv.save(update_fields=['stock_reservado'])
 
-                    # Registrar movimiento
+                    # Registrar movimiento (inv se recarga si es necesario, pero no lo necesitamos aquí)
                     Transaction.objects.create(
                         inventario=inv,
                         tipo='egreso',
