@@ -818,43 +818,43 @@
             <p class="text-muted">No hay reportes generados aún.<br>Usa el formulario superior para crear uno.</p>
         </div>
         {% endif %}
+        </div>
       
       <!-- PANEL: Usuarios -->
-      <div id="panel-parametros-sii" class="panel {% if active_panel != 'parametros-sii' %}d-none{% endif %}"
-     >
-        <div class="form-container">
-          <h3 class="form-section-title mb-4">
-            <i class="fas fa-users text-warning me-2"></i> Registro de Usuarios
-          </h3>
-          <form method="post" class="compact-form">
-            {% csrf_token %}
-            <input type="hidden" name="form_type" value="usuario">
-            {{ user_form|crispy }}
-            <div class="d-flex justify-content-end mt-4">
-              <button type="submit" class="btn btn-warning btn-lg px-5">
-                <i class="fas fa-save me-2"></i> Registrar Usuario
-              </button>
+        <div id="panel-parametros-sii" class="panel {% if active_panel != 'parametros-sii' %}d-none{% endif %}">
+          <div class="form-container">
+            <h3 class="form-section-title mb-4">
+              <i class="fas fa-users text-warning me-2"></i> Registro de Usuarios
+            </h3>
+            <form method="post" class="compact-form">
+              {% csrf_token %}
+              <input type="hidden" name="form_type" value="usuario">
+              {{ user_form|crispy }}
+              <div class="d-flex justify-content-end mt-4">
+                <button type="submit" class="btn btn-warning btn-lg px-5">
+                  <i class="fas fa-save me-2"></i> Registrar Usuario
+                </button>
+              </div>
+            </form>
+            <div class="table-container mt-4">
+              <h5 class="form-section-title mb-4">Usuarios Existentes</h5>
+              {% if usuarios %}
+              <ul class="centros-list">
+                {% for user in usuarios %}
+                <li>
+                  <strong>{{ user.username }}</strong> - {{ user.role }}
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <div class="empty-state">
+                <i class="fas fa-users"></i>
+                <p class="mt-3">No hay usuarios registrados</p>
+              </div>
+              {% endif %}
             </div>
-          </form>
-          <div class="table-container mt-4">
-            <h5 class="form-section-title mb-4">Usuarios Existentes</h5>
-            {% if usuarios %}
-            <ul class="centros-list">
-              {% for user in usuarios %}
-              <li>
-                <strong>{{ user.username }}</strong> - {{ user.role }}
-              </li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <div class="empty-state">
-              <i class="fas fa-users"></i>
-              <p class="mt-3">No hay usuarios registrados</p>
-            </div>
-            {% endif %}
           </div>
         </div>
-      </div>
 
     </main>
 
