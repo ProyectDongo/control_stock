@@ -6,15 +6,15 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Sum, F, Q
 from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
-from django.urls import reverse  
+from django.urls import reverse
 from django.utils import timezone
 from .forms import UserRegistrationForm, ProductoForm, StockEntryForm, ProveedorForm, PedidoForm, PedidoItemFormSet, StockExitForm
 from .models import Producto, Inventario, Proveedor, Pedido, PedidoItem, Reporte, User, Transaction, Empresa
-from django.db import transaction  
+from django.db import transaction
 import qrcode
 from io import BytesIO
 import base64
-from datetime import datetime, timedelta  
+from datetime import datetime, timedelta
 from django.utils import timezone
 from django.core.paginator import Paginator
 
@@ -31,16 +31,18 @@ def dashboard(request):
     if active_panel not in allowed_panels.get(role, []):
         messages.warning(request, 'No tienes acceso a esta sección.')
         active_panel = 'dashboard'
-  
+
     vigencia_plan = {'codigo_plan': 'Prototipo Educativo'}
-    
+
     # Obtener datos de la empresa (una sola empresa para el software)
     empresa = Empresa.objects.first()
-    
+
     # Cálculos para dashboard
     total_productos = Producto.objects.count()
     inventarios = Inventario.objects.annotate(
-        disponible=F('cantidad') - F('stock_reservado')
+        disponible=F('cantidad') - F('stock_reservado'),
+        val=F('cantidad') * F('producto__precio_unitario'),  # Anotación movida aquí (antes de paginación)
+        ganancia_estimada=F('cantidad') * (F('producto__precio_venta') - F('producto__precio_unitario'))  # Anotación movida aquí
     )
     stock_bajo = inventarios.filter(disponible__lt=F('stock_minimo')).count()
     total_inventario = Inventario.objects.aggregate(total=Sum('cantidad'))['total'] or 0
@@ -66,13 +68,13 @@ def dashboard(request):
     paginator_inv = Paginator(inventarios, 10)
     page_inv = request.GET.get('page_inv', 1)
     inventarios_paginados = paginator_inv.get_page(page_inv)
-    
+
     # Inventarios con valor y ganancia estimada (asumiendo margen del 20%)
     inventarios = inventarios.annotate(
         val=F('cantidad') * F('producto__precio_unitario'),
         ganancia_estimada=F('cantidad') * (F('producto__precio_venta') - F('producto__precio_unitario'))
     )
-    
+
     total_costo = Inventario.objects.annotate(
         costo=F('cantidad') * F('producto__precio_unitario')
     ).aggregate(total=Sum('costo'))['total'] or 0
@@ -95,7 +97,7 @@ def dashboard(request):
     ganancia_real = ventas_realizadas - costo_vendido
 
     # Últimos movimientos con valores
-    
+
 
     # Pedidos vencidos
     hoy = timezone.now().date()
@@ -105,7 +107,7 @@ def dashboard(request):
     )
     pedidos_vencidos = [(ped, (hoy - ped.fecha_vencimiento).days) for ped in pedidos_vencidos_qs]
 
-    # Datos para gráficos 
+    # Datos para gráficos
     fecha_inicio = timezone.now() - timedelta(days=7)
     fecha_inicio = fecha_inicio.replace(hour=0, minute=0, second=0, microsecond=0)
     transacciones = Transaction.objects.filter(fecha__gte=fecha_inicio).order_by('fecha')
@@ -137,7 +139,7 @@ def dashboard(request):
         'ganancias': [float(inv.ganancia_estimada or 0) for inv in inventarios]
     }
 
-    # Listas 
+    # Listas
     proveedores = Proveedor.objects.all()
     productos = Producto.objects.all()
     pedidos = Pedido.objects.all().order_by('-fecha_pedido')  # Para lista de pedidos
@@ -147,54 +149,81 @@ def dashboard(request):
         rep.lineas = []  # Lista de líneas procesadas
         rep.total_resumen = 0  # Total solo para Resumen
 
-        for raw_line in rep.contenido.strip().split('\n'):
-            if not raw_line.strip():
-                continue
-            
-            if rep.tipo == 'Resumen':
-                # Formato esperado: "Producto: cantidad (Valor: $valor_total)"
-                try:
-                    nombre, resto = raw_line.split(':', 1)
-                    nombre = nombre.strip()
-                    
-                    # Extraer cantidad
-                    cantidad_str = resto.split('(')[0].strip()
-                    
-                    # Extraer valor total (el que está entre $ y ))
-                    valor_total_str = resto.split('$')[1].split(')')[0].strip()
-                    valor_total = int(valor_total_str.replace('.', ''))
-                    
-                    # Obtener precio unitario de venta desde el inventario
-                    inv = Inventario.objects.get(producto__nombre__icontains=nombre)
-                    precio_venta = inv.producto.precio_venta
-                    
-                    # Acumular total
-                    rep.total_resumen += valor_total
-                except Exception:
-                    # Si falla el parsing, mostramos la línea cruda
-                    nombre = raw_line.strip()
-                    cantidad_str = 'N/A'
-                    precio_venta = 0
-                    valor_total = 0
-                
-                rep.lineas.append({
-                    'nombre': nombre,
-                    'cantidad': cantidad_str,
-                    'precio_venta': precio_venta,
-                    'valor_total': valor_total
-                })
-            else:
-                # Para Ingreso/Egreso: solo el texto completo
-                rep.lineas.append({
-                    'texto': raw_line.strip()
-                })
-    # Forms 
+        for rep in reportes:
+            rep.lineas = []  # Lista de líneas procesadas
+            rep.total_resumen = 0  # Total solo para Resumen
+
+            for raw_line in rep.contenido.strip().split('\n'):
+                if not raw_line.strip():
+                    continue
+
+                if rep.tipo == 'Resumen':
+                    # Formato: "Producto: cantidad (Valor: valor_total)"  # Sin $
+                    try:
+                        nombre, resto = raw_line.split(':', 1)
+                        nombre = nombre.strip()
+
+                        # Extraer cantidad
+                        cantidad_str = resto.split('(')[0].strip()
+
+                        # Extraer valor total (después de "Valor: " y antes de ")")
+                        valor_total_str = resto.split('Valor: ')[1].split(')')[0].strip()
+                        valor_total = int(valor_total_str.replace('.', '').replace(',', ''))  # Por si hay separadores
+
+                        # Obtener precio unitario de venta desde el inventario
+                        inv = Inventario.objects.get(producto__nombre__icontains=nombre)
+                        precio_venta = inv.producto.precio_venta
+
+                        # Acumular total
+                        rep.total_resumen += valor_total
+
+                        rep.lineas.append({
+                            'nombre': nombre,
+                            'cantidad': cantidad_str,
+                            'precio_venta': precio_venta,
+                            'valor_total': valor_total
+                        })
+                    except Exception as e:
+                        # Log opcional: print(f"Error parsing Resumen: {e}")
+                        rep.lineas.append({
+                            'nombre': raw_line.strip(),
+                            'cantidad': 'N/A',
+                            'precio_venta': 0,
+                            'valor_total': 0
+                        })
+                else:
+                    # Para Ingreso/Egreso: "Nombre: +cantidad el fecha_iso" o "-cantidad"
+                    try:
+                        nombre, resto = raw_line.split(':', 1)
+                        nombre = nombre.strip()
+
+                        cantidad_str, fecha_str = resto.split(' el ', 1)
+                        cantidad_str = cantidad_str.strip()  # '+10' o '-5'
+
+                        signo = cantidad_str[0]  # '+' o '-'
+                        cantidad = cantidad_str[1:]  # '10'
+
+                        fecha = datetime.fromisoformat(fecha_str.strip())  # Convierte a datetime
+
+                        rep.lineas.append({
+                            'nombre': nombre,
+                            'cantidad': cantidad,
+                            'fecha': fecha,
+                            'signo': signo
+                        })
+                    except Exception as e:
+                        # Log opcional: print(f"Error parsing {rep.tipo}: {e}")
+                        rep.lineas.append({'texto': raw_line.strip()})
+
+
+
+    # Forms
     stock_entry_form = StockEntryForm(
-        request.POST if request.POST.get('form_type') == 'ingreso' else None, 
+        request.POST if request.POST.get('form_type') == 'ingreso' else None,
         prefix='ingreso'
     )
     stock_exit_form = StockExitForm(
-        request.POST if request.POST.get('form_type') == 'egreso' else None, 
+        request.POST if request.POST.get('form_type') == 'egreso' else None,
         prefix='egreso'
     )
     proveedor_form = ProveedorForm(request.POST if request.POST.get('form_type') == 'proveedor' else None)
@@ -222,8 +251,8 @@ def dashboard(request):
             fecha_hasta_dt = timezone.make_aware(fecha_hasta_dt)
             pedidos = pedidos.filter(fecha_pedido__lte=fecha_hasta_dt)
 
-    redirect_url = None 
-    
+    redirect_url = None
+
     edit_pk = None
     if request.method == 'GET':
         if 'edit_producto' in request.GET and role in ['bodeguero', 'admin']:
@@ -240,10 +269,10 @@ def dashboard(request):
             pedido_form = PedidoForm(instance=pedido_instance)
             pedido_item_formset = PedidoItemFormSet(instance=pedido_instance)
             active_panel = 'concepto-egreso'
-    
+
     if request.method == 'POST':
         form_type = request.POST.get('form_type')
-        
+
 
         if form_type in ['ingreso', 'egreso']:
             form = stock_entry_form if form_type == 'ingreso' else stock_exit_form
@@ -251,7 +280,7 @@ def dashboard(request):
                 producto = form.cleaned_data['producto']
                 cantidad = form.cleaned_data['cantidad']
 
-                with transaction.atomic(): 
+                with transaction.atomic():
                     inv, _ = Inventario.objects.get_or_create(
                         producto=producto,
                         defaults={'stock_minimo': 10}
@@ -274,17 +303,17 @@ def dashboard(request):
                     elif form_type == 'completar_pedido':
                             if role not in ['trabajador', 'bodeguero', 'admin']:
                                 return JsonResponse({'success': False, 'message': 'No tienes permiso.'})
-                            
+
                             pedido_id = request.POST.get('pedido_id')
                             try:
                                 pedido = get_object_or_404(Pedido, pk=pedido_id)
                                 if pedido.estado != 'Pendiente':
                                     return JsonResponse({'success': False, 'message': 'El pedido ya no está pendiente.'})
-                                
+
                                 with transaction.atomic():
                                     pedido.estado = 'Completado'
                                     pedido.save()  # Esto activará el post_save que hace el egreso y libera reserva
-                                    
+
                                 return JsonResponse({
                                     'success': True,
                                     'message': f'Pedido #{pedido_id} completado exitosamente. Stock actualizado.'
@@ -312,7 +341,7 @@ def dashboard(request):
             else:
                 messages.error(request, 'Error en el formulario de stock.')
                 active_panel = 'ingreso' if form_type == 'ingreso' else 'egreso'
-                
+
         elif form_type == 'producto' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             instance = get_object_or_404(Producto, pk=pk) if pk else None
@@ -324,13 +353,13 @@ def dashboard(request):
             else:
                 messages.error(request, 'Error en el formulario de producto.')
                 active_panel = 'concepto-ingreso'  # Quedarse para mostrar errores
-           
+
         elif form_type == 'delete_producto' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             get_object_or_404(Producto, pk=pk).delete()
             messages.success(request, 'Producto eliminado.')
-           
-        
+
+
         elif form_type == 'proveedor' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             instance = get_object_or_404(Proveedor, pk=pk) if pk else None
@@ -340,14 +369,14 @@ def dashboard(request):
                 messages.success(request, 'Proveedor guardado exitosamente.')
             else:
                 messages.error(request, 'Error en el formulario de proveedor.')
-                active_panel = 'centro'  
-        
+                active_panel = 'centro'
+
         elif form_type == 'delete_proveedor' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             get_object_or_404(Proveedor, pk=pk).delete()
             messages.success(request, 'Proveedor eliminado.')
             return redirect(reverse('dashboard') + '?panel=centro')
-        
+
         elif form_type == 'pedido' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             es_nuevo = pk is None or pk == ''
@@ -359,53 +388,83 @@ def dashboard(request):
             if pedido_form.is_valid() and pedido_item_formset.is_valid():
                 try:
                     with transaction.atomic():
-                        pedido = pedido_form.save()
+                        # 1. VALIDACIÓN MANUAL DE STOCK (Antes de guardar)
+                        pedido_pre = pedido_form.save(commit=False)
+                        items_pre = pedido_item_formset.save(commit=False)
+                        
+                        # Agrupar cantidades por producto
+                        stock_necesario = {}
+                        deleted_ids = [obj.id for obj in pedido_item_formset.deleted_objects]
 
-                        # Guardar ítems del formset
-                        instances = pedido_item_formset.save(commit=False)
+                        for item in items_pre:
+                            # Ignorar items marcados para borrar
+                            if item in pedido_item_formset.deleted_objects: 
+                                continue
+                            if not item.producto: # Evitar items vacíos
+                                continue
+                                
+                            prod_id = item.producto.id
+                            stock_necesario[prod_id] = stock_necesario.get(prod_id, 0) + item.cantidad
 
-                        # Eliminar los marcados para borrar
-                        for obj in pedido_item_formset.deleted_objects:
-                            obj.delete()
-
-                        # Guardar los nuevos/modificados
-                        has_valid_item = False
-                        for item in instances:
-                            if item.producto and item.cantidad > 0:
-                                item.pedido = pedido
-                                item.save()
-                                has_valid_item = True
-                            elif item.pk:  # Si existe pero está vacío, borrarlo
-                                item.delete()
-
-                        # Solo exigimos ítems si es pedido nuevo
-                        if es_nuevo and not has_valid_item and not pedido.items.exists():
-                            raise ValidationError("Debe agregar al menos un producto con cantidad mayor a 0.")
-
-                        # Reservar stock solo si es nuevo y estado reserva
+                        # Validar contra BD
                         reserving_states = ['Pendiente', 'Entransito']
-                        if es_nuevo and pedido.estado in reserving_states:
-                            # El signal pre_save ya se encargó de esto
-                            pass
+                        if es_nuevo or pedido_pre.estado in reserving_states:
+                            for prod_id, cantidad_req in stock_necesario.items():
+                                inv = Inventario.objects.select_for_update().get(producto_id=prod_id)
+                                
+                                # Calcular lo que ya estaba reservado por ESTE pedido (para no restar doble al editar)
+                                reservado_previo = 0
+                                if not es_nuevo:
+                                    prev_items = PedidoItem.objects.filter(pedido=instance, producto_id=prod_id).exclude(id__in=deleted_ids)
+                                    reservado_previo = sum(i.cantidad for i in prev_items)
+
+                                disponible_real = (inv.cantidad - inv.stock_reservado) + reservado_previo
+                                
+                                if disponible_real < cantidad_req:
+                                    raise ValidationError(f"Stock insuficiente para {inv.producto.nombre}. Disponible: {disponible_real}, Solicitado: {cantidad_req}.")
+
+                        # 2. GUARDAR
+                        pedido = pedido_form.save()
+                        
+                        pedido_item_formset.instance = pedido
+                        
+                        # Si editamos, limpiamos reserva anterior antes de poner la nueva
+                        if not es_nuevo and instance.estado in reserving_states:
+                             for item in instance.items.all():
+                                Inventario.objects.filter(producto=item.producto).update(
+                                    stock_reservado=F('stock_reservado') - item.cantidad
+                                )
+
+                        pedido_item_formset.save()
+
+                        # 3. APLICAR RESERVA (Si aplica)
+                        if pedido.estado in reserving_states:
+                            for item in pedido.items.all():
+                                Inventario.objects.filter(producto=item.producto).update(
+                                    stock_reservado=F('stock_reservado') + item.cantidad
+                                )
 
                     messages.success(request, 'Pedido guardado exitosamente.')
                     return redirect(reverse('dashboard') + '?panel=concepto-egreso')
 
                 except ValidationError as e:
+                    messages.error(request, str(e))
+                    active_panel = 'concepto-egreso'
+                except Exception as e:
                     messages.error(request, f'Error: {str(e)}')
                     active_panel = 'concepto-egreso'
             else:
-                messages.error(request, 'Error en el formulario. Revisa los campos.')
-                active_panel = 'concepto-egreso'
-            
-        
+                 messages.error(request, 'Error en el formulario.')
+                 active_panel = 'concepto-egreso'
+
+
         elif form_type == 'delete_pedido' and role in ['bodeguero', 'admin']:
             pk = request.POST.get('pk')
             get_object_or_404(Pedido, pk=pk).delete()
             messages.success(request, 'Pedido eliminado.')
             return redirect(reverse('dashboard') + '?panel=concepto-egreso')
-            
-        
+
+
         elif form_type == 'reporte' and role in ['bodeguero', 'admin']:
             tipo = request.POST.get('tipo')
             fecha_desde = request.POST.get('fecha_desde')
@@ -423,47 +482,21 @@ def dashboard(request):
             if tipo == 'Ingreso':
                 qs = qs.filter(tipo='ingreso')
                 content = "\n".join([f"{t.inventario.producto.nombre}: +{t.cantidad} el {t.fecha}" for t in qs])
+
             elif tipo == 'Egreso':
                 qs = qs.filter(tipo='egreso')
                 content = "\n".join([f"{t.inventario.producto.nombre}: -{t.cantidad} el {t.fecha}" for t in qs])
+
             elif tipo == 'Resumen':
                 inventarios_list = Inventario.objects.all()
                 content = "\n".join([f"{inv.producto.nombre}: {inv.cantidad} (Valor: {inv.cantidad * inv.producto.precio_venta})" for inv in inventarios_list])
+
             if content:
-                 # Parsear las líneas para facilitar el uso en template
-                lineas = []
-                for raw_line in content.strip().split('\n'):
-                    if raw_line.strip():
-                        if tipo == 'Resumen':
-                            # Ejemplo: "Producto: 10 (Valor: $50000)"
-                            # Extraemos: nombre, cantidad, valor_venta, valor_total
-                            try:
-                                nombre = raw_line.split(':')[0].strip()
-                                resto = raw_line.split(':')[1].strip()
-                                cantidad = resto.split('(')[0].strip()
-                                valor_total_str = resto.split('$')[1].split(')')[0].strip()
-                                valor_total = int(valor_total_str.replace('.', ''))
-                                # Buscamos el producto para obtener precio_venta
-                                inv = Inventario.objects.get(producto__nombre=nombre)
-                                valor_unitario_venta = inv.producto.precio_venta
-                            except:
-                                nombre = raw_line
-                                cantidad = 'N/A'
-                                valor_unitario_venta = 0
-                                valor_total = 0
-                            lineas.append({
-                                'nombre': nombre,
-                                'cantidad': cantidad,
-                                'valor_unitario_venta': valor_unitario_venta,
-                                'valor_total': valor_total,
-                            })
-                        else:
-                            # Ingreso/Egreso: solo la línea completa
-                            lineas.append({'texto': raw_line.strip()})
 
                 Reporte.objects.create(tipo=tipo, contenido=content)
                 messages.success(request, f'Reporte de {tipo} generado.')
-        
+                return redirect(reverse('dashboard') + '?panel=rcv')
+
         elif form_type == 'usuario' and role == 'admin':
             if user_form.is_valid():
                 user_form.save()
@@ -472,14 +505,14 @@ def dashboard(request):
             else:
                 messages.error(request, 'Error en el formulario de usuario.')
                 active_panel = 'parametros-sii'
-                  
-            
-        
+
+
+
         else:
             messages.error(request, 'Acción no permitida para tu rol.')
             redirect_panel = 'dashboard'
-        
-        
+
+
     context = {
         'ultimos_movimientos': ultimos_movimientos,
         'inventarios': inventarios_paginados,
@@ -507,11 +540,11 @@ def dashboard(request):
         'pedido_item_formset': pedido_item_formset,
         'user_form': user_form,
         'active_panel': active_panel,
-        'role': role,  
+        'role': role,
         'ganancia_real': int(ganancia_real or 0),
         'ganancia_estimada_total': int(ganancia_estimada_total or 0),
-        
-        
+
+
     }
     return render(request, 'dashboard.html', context)
 
@@ -587,7 +620,7 @@ def pedido_qr_publico(request, pk):
     Accesible sin login, ideal para enviar por WhatsApp.
     """
     pedido = get_object_or_404(Pedido, pk=pk)
-    
+
     # Generar QR (mismo código que en generar_qr)
     url_detalle = request.build_absolute_uri(reverse('pedido_qr_publico', args=[pk]))
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
